@@ -31,36 +31,6 @@ cleanOnes op = case op of
     _                     -> op
 
   
--- simplifyPass :: [o -> o] -> o -> o
--- simplifyPass rewriterules op    = foldr (\f -> f op) op rewriterules
-
--- simplifyFixpoint :: [o -> o] -> o -> o
--- simplifyFixpoint rewriterules op = fixpoint (simplifyPass rewriterules) op
-
--- | rectangularize take a general QOp syntax tree and outputs a "rectangular" syntax tree on the form of a list of Compositions of n-qubit tensor products.
---rectangularize :: QOp -> QOp
-
-    
-cleanAdjoints :: QOp -> QOp
-cleanAdjoints op = case op of
-    Adjoint I                 -> I
-    Adjoint X                 -> X
-    Adjoint Y                 -> Y
-    Adjoint Z                 -> Z
-    Adjoint H                 -> H
-    Adjoint (Adjoint a)       -> cleanAdjoints a
-    --(AB)^-1 = B^-1 A^-1
-    Adjoint (Compose a b)     -> Compose (cleanAdjoints (Adjoint b)) (cleanAdjoints (Adjoint a))
-    Adjoint (Tensor a b)      -> Tensor  (cleanAdjoints (Adjoint a)) (cleanAdjoints (Adjoint b))
-    Adjoint (DirectSum a b)   -> DirectSum (cleanAdjoints (Adjoint a)) (cleanAdjoints (Adjoint b))
-    -- Compose a (Adjoint a)     -> I -- A^{-1}A = I 
-    -- Compose (Adjoint a) a     -> I -- AA^{-1} = I
-    Tensor  a b               -> Tensor    (cleanAdjoints a) (cleanAdjoints b)
-    DirectSum a b             -> DirectSum (cleanAdjoints a) (cleanAdjoints b)
-    Compose a b               -> Compose   (cleanAdjoints a) (cleanAdjoints b)
-    _                         -> op    
-
-
 
 
 
