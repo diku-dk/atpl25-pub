@@ -1,0 +1,67 @@
+cabal-version:   3.4
+name:            hqp
+version:         0.1.0.0
+synopsis:        HQP language playground in Haskell
+license:         BSD-3-Clause
+license-file:    LICENSE
+author:          James Avery
+maintainer:      avery@diku.dk
+category:        Math
+build-type:      Simple
+extra-doc-files: CHANGELOG.md
+
+common warnings
+    ghc-options: -Wall -Wno-orphans
+
+common common-options
+    default-language: GHC2021    
+    default-extensions:
+        NoMonomorphismRestriction,
+        FlexibleContexts,
+        FlexibleInstances,
+        TypeFamilies,
+        TypeSynonymInstances,
+        BinaryLiterals,
+        PatternSynonyms
+
+library core
+    import:   warnings, common-options
+    exposed-modules: 
+      HQP,
+      HQP.QOp,
+      HQP.QOp.Syntax,
+      HQP.QOp.Simplify,
+      HQP.QOp.HelperFunctions,
+      HQP.QOp.MatrixSemantics,
+      HQP.QOp.TensorSemantics,
+      HQP.QOp.StabilizerSemantics,
+      HQP.PrettyPrint,
+      HQP.PrettyPrint.PrettyOp,
+      HQP.PrettyPrint.PrettyMatrix,
+      Programs.QFT 
+
+    build-depends:  
+        base,
+        hmatrix,
+        random,
+        mtl
+    hs-source-dirs:   src
+
+common exe-common
+  hs-source-dirs: exe
+  build-depends:
+      base,
+      hmatrix,
+      hqp:core
+  ghc-options: -Wall
+
+executable NoCloning
+  import: exe-common
+  main-is: NoCloning.hs
+
+executable YesTeleportation
+  import: exe-common
+  build-depends:
+    random
+  main-is: YesTeleportation.hs
+  
