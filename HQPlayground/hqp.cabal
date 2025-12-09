@@ -38,14 +38,15 @@ library core
       HQP.PrettyPrint,
       HQP.PrettyPrint.PrettyOp,
       HQP.PrettyPrint.PrettyMatrix,
-      Programs.QFT 
+      Programs.QFT,
+      AST
 
     build-depends:  
         base,
         hmatrix,
         random,
         mtl
-    hs-source-dirs:   src
+    hs-source-dirs:   srcHQP, srcSAT
 
 common exe-common
   hs-source-dirs: exe
@@ -55,18 +56,7 @@ common exe-common
       hqp:core
   ghc-options: -Wall
 
-executable NoCloning
+executable SAT
   import: exe-common
-  main-is: NoCloning.hs
-
-
-executable ProgramInversion
-  import: exe-common
-  main-is: ProgramInversion.hs
-
-executable YesTeleportation
-  import: exe-common
-  build-depends:
-    random
-  main-is: YesTeleportation.hs
+  main-is: SAT.hs
   
