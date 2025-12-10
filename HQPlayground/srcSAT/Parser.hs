@@ -100,7 +100,7 @@ parseExp = choice
   [
     do
       lString "~"
-      x <- parseExp
+      x <- parseExp1
       pure $ NEG x,
     do
       x <- parseAtom
