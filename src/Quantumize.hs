@@ -2,7 +2,6 @@ module Quantumize where
 
 import AST
 import Control.Monad.State
-import Data.List (union)
 import HQP.QOp.Syntax
 
 data Register
@@ -97,18 +96,18 @@ registerToPos _ Output = 0
 registerToPos _ (Input i) = i + 1
 registerToPos n (Ancilla i) = n + i
 
-
-quantumize :: (Int, Int) -> [Instr] -> Program
-quantumize _ [] = []
-quantumize (n, m) (instr : instrs) = operation ++ quantumize (n, m) instrs
+quantumize :: (Int, Int) -> [Instr] -> QOp
+quantumize (n, m) [] = pow I width
+  where width = n + m + 1
+quantumize (n, m) (instr : instrs) = quantumize (n, m) instrs <> operation
   where
     width = n + m + 1
     operation = case instr of
       InstrAND in1 in2 out -> 
-        [Unitary $ ccx width (registerToPos n in1) (registerToPos n in2) (registerToPos n out)]
+        ccx width (registerToPos n in1) (registerToPos n in2) (registerToPos n out)
       InstrXOR in1 in2 out -> 
-        [Unitary $ cx width (registerToPos n in1) (registerToPos n out) <> cx width (registerToPos n in2) (registerToPos n out)]
+        cx width (registerToPos n in1) (registerToPos n out) <> cx width (registerToPos n in2) (registerToPos n out)
       InstrNEG input output -> 
-        [Unitary $ cx width (registerToPos n input) (registerToPos n output)]
+        cx width (registerToPos n input) (registerToPos n output)
       InstrCopy from to -> 
-        [Unitary $ cx width (registerToPos n from) (registerToPos n to)]
+        cx width (registerToPos n from) (registerToPos n to)
