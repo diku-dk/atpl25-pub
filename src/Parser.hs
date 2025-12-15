@@ -96,7 +96,8 @@ getEnv = Parser $ \(s,v) -> Right ((s,v),v)
 modEnv :: (VTable -> VTable) -> Parser ()
 modEnv f = Parser $ \(s,v) -> Right ((s,f v),())
 
--- A variable wrapper, transforming the variable to an Int, based on the current variable environment.
+-- A transformer literal. Consumes a variable, and looks up/stores that variable in the environment,
+-- and maps each unique variable to one unique integer.
 tVar :: Parser Int
 tVar = do
   v <- lVar
