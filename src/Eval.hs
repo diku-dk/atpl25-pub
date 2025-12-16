@@ -9,7 +9,7 @@ type PureTensor a = V.Vector a
 type Tensor a = [PureTensor a]
 
 zero :: Int -> Tensor Qubit
-zero dim = [V.replicate dim (Qubit 0 0)]
+zero dim = [V.replicate dim (qubit 1 0)]
 
 evalProgram :: Program -> Tensor Qubit -> Tensor Qubit
 evalProgram program tensor = foldl (flip evalGate) tensor program
@@ -22,7 +22,7 @@ evalTerm (Only pos gate) qbs = pure $ qbs V.// [(pos, evalSingle gate (qbs V.! p
 evalTerm (Ctrl ctrls target gate) qbs = [qbs, correction]
   where
     dimension = length qbs
-    beta = product [qbs V.! i | i <- ctrls]
-    target' = evalSingle gate (qbs V.! target) - (qbs V.! target)
-    correction = V.replicate dimension (Qubit 0 0) V.// ((target, target') : zip ctrls (repeat beta))
+    beta = product $ [qsnd (qbs V.! i) | i <- ctrls]
+    targetVal' = beta *^ (evalSingle gate (qbs V.! target) - (qbs V.! target))
+    correction = V.replicate dimension (qubit 0 0) V.// ((target, targetVal') : zip ctrls (repeat (qubit 0 beta)))
 

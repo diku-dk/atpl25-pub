@@ -1,32 +1,35 @@
-module LinAlg where
+{-# LANGUAGE DerivingStrategies #-}
+module LinAlg(Qubit, qubit, evalSingle, (*^), qfst, qsnd) where
 
 import Gates
 import Numeric.LinearAlgebra
 
-type CMat = Matrix (Complex Double)
-data Qubit = Qubit (Complex Double) (Complex Double)
-  deriving (Show)
+newtype Qubit = Qubit (Vector (Complex Double))
+  deriving newtype (Show, Num)
 
-instance Num Qubit where
-  (Qubit a b) + (Qubit c d) = Qubit (a+b) (c+d)
-  (Qubit a b) - (Qubit c d) = Qubit (a-b) (c-d)
-  (Qubit a b) * (Qubit c d) = Qubit (a*b) (c*d)
-  fromInteger n = Qubit (fromInteger n) 0
-  abs (Qubit a b) = Qubit (abs a) (abs b)
-  signum (Qubit a b) = Qubit (signum a) (signum b)
+qubit :: Complex Double -> Complex Double -> Qubit
+qubit a b = Qubit (2 |> [a, b])
 
+(*^) :: Complex Double -> Qubit -> Qubit
+z *^ (Qubit v) = Qubit $ scale z v
+
+qfst :: Qubit -> Complex Double
+qfst (Qubit v) = v ! 0
+
+qsnd :: Qubit -> Complex Double
+qsnd (Qubit v) = v ! 1
 
 ii :: Complex Double
 ii = 0 :+ 1
 
-toVector :: Qubit -> Vector (Complex Double)
-toVector (Qubit a b) = 2 |> [a, b]
+-- toVector :: Qubit -> Vector (Complex Double)
+-- toVector (Qubit a b) = 2 |> [a, b]
 
-toQubit :: Vector (Complex Double) -> Qubit
-toQubit v = Qubit (v ! 0) (v ! 1)
+-- toQubit :: Vector (Complex Double) -> Qubit
+-- toQubit v = Qubit (v ! 0) (v ! 1)
 
 evalSingle  :: SingleGate -> Qubit -> Qubit
-evalSingle gate qb = toQubit $ mat #> toVector qb
+evalSingle gate (Qubit qb) = Qubit $ mat #> qb
   where
     mat = case gate of
       I -> (2 >< 2) [1,0,
