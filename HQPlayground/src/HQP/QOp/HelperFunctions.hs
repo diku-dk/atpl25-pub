@@ -1,54 +1,37 @@
 module HQP.QOp.HelperFunctions where
 import HQP.QOp.Syntax
-import Data.Bits(FiniteBits,countTrailingZeros)
+import Data.Bits(FiniteBits,countTrailingZeros,shiftL,shiftR)
 
 
 -- | Signature of an operator a: C^{2^m} -> C^{2^n} is (m,n) = (op_domain a, op_range a)
-op_range :: QOp -> Int
-op_range op = case op of
-    One          -> 0
-    Ket ks        -> length ks 
-    C a           -> 1 + op_range a
-    Tensor    a b -> op_range a + op_range b
-    DirectSum a b -> let 
-      (w_a, w_b) = (op_range a, op_range b)
+op_qubits :: QOp -> Nat
+op_qubits op = case op of
+    Identity n    -> n
+    C a           -> 1 + op_qubits a
+    Tensor    a b -> op_qubits a + op_qubits b
+    DirectSum a b -> let  
+      (w_a, w_b) = (op_qubits a, op_qubits b)
       in 
         if w_a == w_b then 1+w_a 
         else 
           error $ "Direct sum of incompatible operator dimensions: " 
           ++ show w_a ++ " qubits /= " ++ show w_b ++ " qubits."
 
-    Compose   a b -> max (op_range a) (op_range b)
-    Adjoint   a   -> op_domain a
+    Compose   a b -> max (op_qubits a) (op_qubits b)
+    Adjoint   a   -> op_qubits a
     Permute   ks  -> length ks 
     _             -> 1 -- 1-qubit gates
 
+op_dimension :: QOp -> Nat
+op_dimension op = 1 `shiftL` (op_qubits op)
 
-op_domain :: QOp -> Int
-op_domain op = case op of
-    One          -> 0
-    Ket _        -> 0 
-    C a           -> 1 + op_domain a
-    Tensor    a b -> op_domain a + op_domain b
-    DirectSum a b -> let 
-      (w_a, w_b) = (op_domain a, op_domain b)
-      in 
-        if w_a == w_b then 1+w_a 
-        else 
-          error $ "Direct sum of incompatible operator dimensions: " 
-          ++ show w_a ++ " qubits /= " ++ show w_b ++ " qubits."
-    Compose   a b -> max (op_domain a) (op_domain b)
-    Adjoint   a   -> op_range a
-    Permute   ks  -> length ks 
-    _             -> 1 -- 1-qubit gates
-
-step_range :: Step -> Int
-step_range step = case step of 
-  Unitary op -> op_range op
+step_qubits :: Step -> Nat
+step_qubits step = case step of 
+  Unitary op -> op_qubits op
   Measure ks -> 1 + maximum ks
 
-prog_range :: Program -> Int
-prog_range program = maximum $ map step_range program
+prog_qubits :: Program -> Nat
+prog_qubits program = maximum $ map step_qubits program
 
 
 
@@ -57,12 +40,13 @@ toBits :: (Integral a) => a -> [a]
 toBits 0 = []
 toBits k = (toBits (k `div` 2)) ++ [(k `mod` 2)]
 
-toBits' :: Int -> Int -> [Int]
+toBits' :: Nat -> Nat -> [Nat]
 toBits' n k = let 
     bits = toBits k
     m    = length bits
   in
     (replicate (n-m) 0) ++ bits
 
-ilog2 :: (FiniteBits a, Integral a) => a -> Int
+-- | Integer logarithm base 2 - change to floor{log_2 n} or ceil{log_2 n}.
+ilog2 :: (FiniteBits a, Integral a) => a -> Nat
 ilog2 = countTrailingZeros

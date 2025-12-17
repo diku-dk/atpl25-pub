@@ -1,6 +1,9 @@
 module HQP.QOp.Syntax where
 import Data.Complex
+import Data.Word
+import Data.Bits(FiniteBits,finiteBitSize,countTrailingZeros,countLeadingZeros,shiftL,shiftR)
 
+type Nat = Int
 type RealT = Double  -- Can be replaced by e.g. exact fractions or constructive reals
 type ComplexT = Complex RealT
 
@@ -8,25 +11,20 @@ type ComplexT = Complex RealT
     The Op type is a symbolic unitary operator, now extended with bra/ket-states, which just builds an abstract syntax tree (AST).
     It provides building blocks for building any n-qubit unitary operator. Explanation of constructors is given below.
  -}  
-data QOp 
-  = One -- Neutral element for tensor product and composition
-  | Ket [Int]        
-  | I| X | Y | Z | H | SX 
-  | R QOp RealT  
-  | C QOp                                 
+data QOp -- TODO: Identity n -> Id n
+  = Identity Nat -- Identity n: C^{2^n} -> C^{2^n} is the n-qubit identity operator.
+                 -- Identity 0: C^1 -> C^1 scalar multiplication by 1, unit for ⊗. 
+                 -- Identity 1 = I: C^2 -> C^2
+                 -- Identity n is the family of units for ∘.                 
+  | X | Y | Z | H | SX
+  | R QOp Rational  -- Rotation around (possibly multi-qubit) axis defined by QOp by angle (in units of π)
+  | C QOp           -- Controlled (possibly multi-qubit) operator
   | Permute [Int]                                                                 
   | Tensor QOp QOp 
   | DirectSum QOp QOp       
   | Compose QOp QOp                        
   | Adjoint QOp 
   deriving (Show,Eq)
-
--- | Haskell magic that allows us to use Bra like a constructor without redundancy.
-pattern Bra :: [Int] -> QOp
-pattern Bra ks <- Adjoint (Ket ks)
-  where Bra ks =  Adjoint (Ket ks)
-
-
 
 {- Quantum programs including measurement. -}
 data Step
@@ -35,6 +33,23 @@ data Step
   deriving (Show, Eq)
 
 type Program = [Step]
+
+-- | Syntactic sugar patterns
+pattern QOpAt :: Nat -> QOp -> QOp
+pattern QOpAt n op <- Tensor (Identity n) op
+  where QOpAt n op  = Tensor (Identity n) op
+
+pattern One, I :: QOp
+pattern One <- Identity 0
+  where One = Identity 0
+
+pattern I <- Identity 1
+  where I = Identity 1
+
+-- | TODO: -> HelperFunctions.hs
+floorLog2Word :: Word -> Word
+floorLog2Word m = fromIntegral (finiteBitSize m - countLeadingZeros m)
+
 
 
 {-| The Operator type class allows us to work with both the Op symbolic operators, and concrete semantics (e.g. matrices, tensor networks, stabilizers) using the same syntax. I.e., no matter which representation we're working with, we can use the same code to compose, tensor, take adjoints, etc.
@@ -53,7 +68,7 @@ class Semigroup o => Operator o where
   (∘),(>:), (⊗), (⊕), (<.>), (<+>) :: o -> o -> o
   (∘)   = compose         -- right-to-left composition (math operator order)
   (>:) a b = compose b a -- left-to-right composition
-  (⊗)   = tensorProd
+  (⊗)   = tensorProd 
   (⊕)   = directSum
   (<.>) = tensorProd 
   (<+>) = directSum  

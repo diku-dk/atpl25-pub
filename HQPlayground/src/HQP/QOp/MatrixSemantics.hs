@@ -19,9 +19,7 @@ type OpT    = CMat
 -}
 evalOp  :: QOp -> CMat
 evalOp op = case op of
-    One -> (1><1) [1]  -- Scalar 1: Tensor product identity
-
-    Ket ks -> ket ks
+    Identity n -> ident (2^n)
 
     I -> (2 >< 2) [1,0,
                    0,1]
@@ -42,9 +40,9 @@ evalOp op = case op of
          in  s * ((2><2) [1, 1,
                          1,-1])
 
-    R axis theta' -> 
+    R axis q -> 
         let mat  = evalOp axis
-            theta = theta' :+ 0 -- Haskell won't multiply real and complex numbers
+            theta = (realToFrac q * pi) :+ 0 -- Haskell won't multiply real and complex numbers
         in
             matFunc exp ( (-ii*theta/2) .* mat )
 

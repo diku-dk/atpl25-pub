@@ -9,7 +9,8 @@ showOp op = case op of
     a `DirectSum` b -> "(" ++ showOp a ++ " ⊕ "  ++ showOp b ++ ")"
     a `Compose`   b -> "(" ++ showOp a ++ " <> " ++ showOp b ++ ")"
     Adjoint a       -> "(adj " ++ showOp a ++ ")"
-    Bra ks          -> "Bra " ++ show ks -- PatternSynonym Alias for Adjoint (Ket ks)
+    Identity 0     -> "One"
+    Identity 1     -> "I"
     _               -> show op
 
 showStep :: Step -> String

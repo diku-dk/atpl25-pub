@@ -12,8 +12,8 @@ fixpoint f = fix (\rec x ->
 cleanOnes :: QOp -> QOp
 cleanOnes op = case op of
     -- Simplification rules
-    C One               -> One
-    R One _             -> One
+    C (Identity n)      -> Identity (2*n)
+    R (Identity n) _    -> Identity n -- TODO: Include phases: C and <+> can make them relative
     Tensor  One b       -> cleanOnes b
     Tensor  a     One   -> cleanOnes a
     Compose One b       -> cleanOnes b
