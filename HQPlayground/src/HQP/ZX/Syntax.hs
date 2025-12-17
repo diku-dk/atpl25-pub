@@ -6,7 +6,13 @@ import Algebra.Graph.Undirected
 type RealT = Double  -- Can be replaced by e.g. exact fractions or constructive reals
 type ComplexT = Complex RealT
 
-data ZXElement = H | Green RealT | Red RealT | Input | Output | I
+data ZXElement
+    = H
+    | Green RealT
+    | Red RealT
+    | Input
+    | Output
+    | I
     deriving (Eq,Show)
 data ZXNode = Node Int ZXElement
     deriving (Eq,Show)
