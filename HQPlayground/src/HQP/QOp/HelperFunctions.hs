@@ -1,6 +1,7 @@
 module HQP.QOp.HelperFunctions where
 import HQP.QOp.Syntax
 import Data.Bits(FiniteBits,countTrailingZeros,shiftL,shiftR)
+import Data.List (sort)
 
 
 -- | Signature of an operator a: C^{2^m} -> C^{2^n} is (m,n) = (op_domain a, op_range a)
@@ -51,3 +52,7 @@ toBits' n k = let
 ilog2 :: (FiniteBits a, Integral a) => a -> Nat
 ilog2 = countTrailingZeros
 
+
+invertPerm :: [Int] -> [Int]
+invertPerm ks = map snd $  -- For each index in the output, find its position in the input
+    sort [ (k, i) | (i, k) <- zip [0..] ks ]
