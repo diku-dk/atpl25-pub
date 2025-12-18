@@ -20,6 +20,30 @@ mergeSpiderTests =
     testGroup "Merge spider tests"
     [
         testCase "Merging path of reds between two greens collapses into green-red-green" $
-            mergeReds  (path [Node 0 $ Green pi,Node 1 $ Red pi,Node 2 $ Red pi,Node 3 $ Red pi,Node 4 $ Red pi,Node 5 $ Green pi])
-            @?= (path [Node 0 $ Green pi,Node 1 $ Red (4*pi),Node 5 $ Green pi])
+            mergeReds  (path
+                [ Node 0 $ Green pi
+                , Node 1 $ Red pi
+                , Node 2 $ Red pi
+                , Node 3 $ Red pi
+                , Node 4 $ Red pi
+                , Node 5 $ Green pi ])
+            @?= (path 
+                [ Node 0 $ Green pi
+                , Node 1 $ Red (4*pi)
+                , Node 5 $ Green pi ]),
+        testCase "Merging in distinct regions" $
+            mergeReds  (path
+                [ Node 0 $ Green pi
+                , Node 1 $ Red pi
+                , Node 2 $ Red pi
+                , Node 3 $ Green pi
+                , Node 4 $ Red (pi/2)
+                , Node 5 $ Red (pi/2)
+                , Node 6 $ Green pi ])
+            @?= (path 
+                [ Node 0 $ Green pi
+                , Node 1 $ Red (2*pi)
+                , Node 3 $ Green pi
+                , Node 4 $ Red pi
+                , Node 6 $ Green pi ])
     ]
