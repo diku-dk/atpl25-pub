@@ -15,10 +15,10 @@ convert op =
 
 fromQOp :: QOp.QOp -> Counter ZXDiagram
 fromQOp op = case op of
-    QOp.Z           -> wrap (Green pi)
-    QOp.X           -> wrap (Red pi)
-    QOp.R QOp.Z a   -> wrap (Green a)
-    QOp.R QOp.X a   -> wrap (Red a)
+    QOp.Z           -> wrap (Green (PiHalves 2))
+    QOp.X           -> wrap (Red (PiHalves 2))
+    QOp.R QOp.Z a   -> wrap (Green (Real a))
+    QOp.R QOp.X a   -> wrap (Red (Real a))
     QOp.H           -> wrap H
     QOp.C QOp.X     -> do c1 <- generateVertexId
                           c2 <- generateVertexId
@@ -26,11 +26,11 @@ fromQOp op = case op of
                           c4 <- generateVertexId
                           c5 <- generateVertexId
                           c6 <- generateVertexId
-                          return $ edges [(Node c1 Input,Node c3 (Green pi))
-                                         ,(Node c2 Input,Node c4 (Red pi))
-                                         ,(Node c3 (Green pi),Node c4 (Red pi))
-                                         ,(Node c3 (Green pi),Node c5 Output)
-                                         ,(Node c4 (Red pi),Node c6 Output)]
+                          return $ edges [(Node c1 Input,Node c3 (Green (PiHalves 2)))
+                                         ,(Node c2 Input,Node c4 (Red (PiHalves 2)))
+                                         ,(Node c3 (Green (PiHalves 2)),Node c4 (Red (PiHalves 2)))
+                                         ,(Node c3 (Green (PiHalves 2)),Node c5 Output)
+                                         ,(Node c4 (Red (PiHalves 2)),Node c6 Output)]
     QOp.Tensor a b -> do g <- fromQOp a
                          g' <- fromQOp b
                          return $  overlay g g'

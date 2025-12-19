@@ -41,7 +41,7 @@ getVertexId :: ZXNode -> Int
 getVertexId (Node v _) = v
 
 
-getPhase :: ZXElement -> RealT
+getPhase :: ZXElement -> Phase
 getPhase (Green p) = p
 getPhase (Red p) = p
-getPhase p = error $ "Cannot get phase of element: "++ show p
+getPhase e = error $ "Cannot get phase of element: "++ show e
