@@ -14,7 +14,6 @@ tests =
         [ mergeSpiderTests
         ]
 
-
 mergeSpiderTests :: TestTree
 mergeSpiderTests =
     testGroup "Merge spider tests"
