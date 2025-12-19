@@ -3,11 +3,6 @@ import HQP.QOp.Syntax
 import HQP.QOp.HelperFunctions
 import Data.Function (fix)
 
-fixpoint :: Eq a => (a -> a) -> a -> a
-fixpoint f = fix (\rec x ->
-    let x' = f x
-    in if x' == x then x else rec x')
-
 -- | One is the neutral element for Tensor and Compose. This function removes all redundant occurrences of One in a QOp expression. 
 cleanOnes :: QOp -> QOp
 cleanOnes op = case op of

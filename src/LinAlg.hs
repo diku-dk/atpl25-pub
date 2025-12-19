@@ -12,11 +12,29 @@ class ApproxEq a where
 
 type CC = Complex Double
 
+instance ApproxEq Double where
+  approxEq tolerence a b = abs (a - b) < tolerence
+
+showImag :: Double -> String
+showImag 1  = "i"
+showImag (-1) = "-i"
+showImag x  = show x ++ "i"
+
+ppComplex :: Complex Double -> String
+ppComplex (a :+ b)
+  | b ~= 0    = show a
+  | a ~= 0    = showImag b
+  | b > 0     = show a ++ " + " ++ showImag b
+  | otherwise = show a ++ " - " ++ showImag (-b)
+
 instance ApproxEq (Vector CC) where
   approxEq tolerence v w = size v == size w && norm_2 (v - w) < tolerence
 
 newtype Qubit = Qubit (Vector CC)
-  deriving newtype (Show, Num, ApproxEq)
+  deriving newtype (Num, ApproxEq)
+
+instance Show Qubit where
+  show qb = "⟨" ++ ppComplex (qfst qb) ++ " ," ++ ppComplex (qsnd qb) ++ "⟩"
 
 -- wrote some constructors and utility functions for Qubit 
 -- because I don't want to use hmatrix directly in Eval Module

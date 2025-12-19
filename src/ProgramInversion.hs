@@ -56,5 +56,5 @@ cleanAdjoint x = x
 applyRewrites :: [QOp -> QOp] -> QOp -> QOp
 applyRewrites rewrites op = foldl (flip ($)) op rewrites
 
-fixRewrites :: [QOp -> QOp] -> QOp -> QOp
-fixRewrites rewrites = fixpoint (applyRewrites rewrites)
+-- fixRewrites :: [QOp -> QOp] -> QOp -> QOp
+-- fixRewrites rewrites = fixpoint (applyRewrites rewrites)
