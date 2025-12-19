@@ -4,6 +4,7 @@ module Eval where
 import Gates
 import LinAlg
 import qualified Data.Vector as V
+import Macros
 
 type PureTensor = V.Vector Qubit
 
@@ -18,6 +19,9 @@ instance ApproxEq Tensor where
 -- |0..0> in tensor notation
 zero :: Int -> Tensor
 zero dim = [V.replicate dim (qubit 1 0)]
+
+hadamard :: Int -> Tensor
+hadamard dim = evalProgram (pow H dim) (zero dim)
 
 -- apply all gates in a program sequentiall (via fold)
 evalProgram :: Program -> Tensor -> Tensor
@@ -84,3 +88,13 @@ pp (pt: pt' : pts) = do
 
 ppPT :: PureTensor -> String
 ppPT pt = V.foldl1 (\acc str -> acc ++ "⊗" ++ str) $ V.map show pt
+
+--
+evalByParts :: Int -> Program -> Tensor -> IO Tensor
+evalByParts _ [] t = pure t
+evalByParts n prog t = do
+    let prog1 = take n prog
+    let t' = evalProgram prog1 t
+    putStrLn $ show (length t') ++ ","
+    pp t'
+    evalByParts n (drop n prog) t'
