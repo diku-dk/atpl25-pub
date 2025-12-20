@@ -61,7 +61,6 @@ compose a b =
 
 mergeAndRemoveIOVertices :: (ZXNode,ZXNode) -> ZXDiagram -> ZXDiagram
 mergeAndRemoveIOVertices (i,o) g =
-    case (neighbors i g,neighbors o g) of
+    case (getNeighbors i g, getNeighbors o g) of
        ([iN],[oN]) -> overlay (edge iN oN) . removeVertex o . removeVertex i $ g
        _       -> error "Inputs and Outputs can only have 1 edge."
-        

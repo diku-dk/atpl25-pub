@@ -10,21 +10,24 @@ type ComplexT = Complex RealT
 data Phase = Real RealT | PiHalves Int
     deriving (Show)
 
+tolerance :: Fractional a => a
+tolerance = 1e-3
+
 instance Eq Phase where
+    (Real a) == (Real b) = abs (a - b) `mod'` (2*pi) < tolerance
+    (PiHalves a) == (Real b) = abs (fromIntegral a * pi / 2 - b) `mod'` (2*pi) < tolerance
+    (Real a) == (PiHalves b) = abs (a - fromIntegral b * pi / 2) `mod'` (2*pi) < tolerance
     (PiHalves a) == (PiHalves b) = (a `mod` 4) == (b `mod` 4)
-    (Real a) == (Real b) = a == b
-    (PiHalves a) == (Real b) = (fromIntegral a) * pi / 2 == b
-    (Real a) == (PiHalves b) = a == (fromIntegral b) * pi / 2
 
 instance Num Phase where
-    (+) (Real a) (Real b) = Real $ a+b -- Optionally add mod 2pi to all real cases?? May loose even more precision?
-    (+) (PiHalves a) (Real b) = Real $ (fromIntegral a)*pi/2+b `mod'` (2*pi)
-    (+) (Real a) (PiHalves b) = Real $ (a+(fromIntegral b)*pi/2) `mod'` (2*pi)
-    (+) (PiHalves a) (PiHalves b) = PiHalves $ a+b `mod` 4
-    (*) (Real a) (Real b) = Real $ a*b 
-    (*) (PiHalves a) (Real b) = Real $ (fromIntegral a)*pi/2*b `mod'` (2*pi)
-    (*) (Real a) (PiHalves b) = Real $ a*(fromIntegral b)*pi/2 `mod'` (2*pi)
-    (*) (PiHalves a) (PiHalves b) = PiHalves $ a*b `mod` 4
+    (+) (Real a) (Real b) = Real $ (a+b) `mod'` (2*pi)
+    (+) (PiHalves a) (Real b) = Real $ (fromIntegral a * pi / 2 + b) `mod'` (2*pi)
+    (+) (Real a) (PiHalves b) = Real $ (a + fromIntegral b * pi / 2) `mod'` (2*pi)
+    (+) (PiHalves a) (PiHalves b) = PiHalves $ (a+b) `mod` 4
+    (*) (Real a) (Real b) = Real $ (a*b) `mod'` (2*pi)
+    (*) (PiHalves a) (Real b) = Real $ (fromIntegral a * pi / 2 * b) `mod'` (2*pi)
+    (*) (Real a) (PiHalves b) = Real $ (a * fromIntegral b * pi / 2) `mod'` (2*pi)
+    (*) (PiHalves a) (PiHalves b) = PiHalves $ (a*b) `mod` 4
     abs (Real a) = Real $ abs a
     abs (PiHalves a) = PiHalves $ abs a
     signum (Real a) = Real $ signum a
