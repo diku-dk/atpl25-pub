@@ -46,7 +46,7 @@ wrap :: ZXElement -> Counter ZXDiagram
 wrap e = do c1 <- generateVertexId
             c2 <- generateVertexId
             c3 <- generateVertexId
-            return $ edges [(Node c1 Input,Node c2 e),(Node c2 e,Node c3 e)]
+            return $ edges [(Node c1 Input,Node c2 e),(Node c2 e,Node c3 Output)]
 
 
 -- connect outputs from a to inputs of b
@@ -55,8 +55,8 @@ wrap e = do c1 <- generateVertexId
 compose :: ZXDiagram -> ZXDiagram -> ZXDiagram
 compose a b =
     let g = overlay a b
-        inputs = filter isInput $ vertexList g
-        outputs = filter isOutput $ vertexList g
+        inputs = filter isInput $ vertexList b
+        outputs = filter isOutput $ vertexList a
     in foldr mergeAndRemoveIOVertices g (zip inputs outputs)
 
 mergeAndRemoveIOVertices :: (ZXNode,ZXNode) -> ZXDiagram -> ZXDiagram
