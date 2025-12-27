@@ -41,7 +41,8 @@ library core
       HQP.PrettyPrint.PrettyOp,
       HQP.PrettyPrint.PrettyMatrix,
       Programs.QFT,
-      Programs.QuantumAdder
+      Programs.QuantumAdder,
+      Programs.RepeaterProtocol
 
     build-depends:  
         base,
