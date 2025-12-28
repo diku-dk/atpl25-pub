@@ -7,17 +7,22 @@ import HQP
 Entanglement Swapping via a Bell-pair repeater Protocol
 ================================================================================
 
-The purpose of this protocol is to convert many local Bell pairs into a single
+The purpose of this protocol is to convert a chain of local Bell pairs into a single
 long-distance Bell pair, using only Clifford unitaries and projective
-measurements.
+measurements. 
+
+The central step is entanglement swapping via Bell measurements:
+
+ |Φ+>_{a,b} ⊗ |Φ+>_{c,d}  -->  Bell-measurement on (b,c) + CX/CZ correction --> |Φ+>_{a,d}
+
+The details of how this works are given at the end of this file.
 
 No quantum information is transmitted. Instead, entanglement is rewired
-by measurement. It is implemented using three steps:
+by measurement. It is implemented using 4 steps:
 
-  1. Create Local Bell pairs |Φ>_ab between qubits a and b at neighboring nodes.
+  1. Create Local Bell pairs |Φ>_{a_i b_i} between qubits a_i and b_i at neighboring nodes.
   2. Transform into Bell basis for measuring intermediate qubit pairs.
-  2. Bell measurements at middle nodes consume local entanglement:
-      |Φ+>_{a,b} ⊗ |Φ+>_{c,d}  -->  Bell-measurement on (b,c)  -->  |Φ+>_{a,d}
+  2. Bell measurements at middle nodes consume local entanglement and swap entanglement to the endpoints.
   3. Apply Pauli corrections at the endpoints, controlled by measurement outcomes.
 
 The output Bell pair can later be used as a communication resource (e.g.
@@ -30,19 +35,20 @@ Long-form explanation is given at the end of this file, below the code.
 -}
 -- The main function is:
 -- | repeater L
---   1) Unitary  U_pre  = (∏_{i=1}^{L-1} (H_{b_{i-1}} ∘ CX_{b_{i-1}→a_i}))
---                     ∘ (∏_{i=0}^{L-1} (CX_{a_i→b_i} ∘ H_{a_i}))
---   2) Measure  M      = [b_0..b_{L-2}] ++ [a_1..a_{L-1}]
---   3) Unitary  U_corr = ∏_{i=1}^{L-1} (CX_{a_i→t} ∘ CZ_{b_{i-1}→t})
-bellAt n a b = cxAt n a b ∘ hAt n a
+--   1+2) Unitary  U_pre  = (∏_{i=1}^{L-1} (H_{b_{i-1}} ∘ CX_{b_{i-1}→a_i}))
+--                        ∘ (∏_{i=0}^{L-1} (CX_{a_i→b_i} ∘ H_{a_i}))
+--   3) Measure  M      = [b_0..b_{L-2}] ++ [a_1..a_{L-1}]
+--   4) Unitary  U_corr = ∏_{i=1}^{L-1} (CX_{a_i→t} ∘ CZ_{b_{i-1}→t})
+bellAt        n a b     = cxAt n a b ∘ hAt n a
+bellTransform n b1 a2 = hAt n b1 ∘ cxAt n b1 a2
 
 repeater :: Int -> Program
 repeater l
   | l < 1     = []
   | otherwise =
       let n = 2*l
-          u_link i = bellAt n (a i) (b i)
-          u_swap i = hAt n (b (i-1)) ∘ cxAt n (b (i-1)) (a i)
+          u_link i = bellAt        n (a i) (b i)                      -- Create chain of Bell pairs
+          u_swap i = bellTransform n (b (i-1)) (a i)  -- Setup for Bell measurement that swaps entanglement ab, cd  -->  ad
           u_corr i = cxAt n (a i) (t l) ∘ czAt n (b (i-1)) (t l)
 
           u_pre  = foldr (∘) (Id n) (map u_swap [1..l-1])
@@ -54,7 +60,7 @@ repeater l
       in
         [ Unitary u_pre,
           Measure meas,
-         Unitary u_corr_all
+          Unitary u_corr_all
         ]
 
 teleport :: Int -> Int -> Int -> Int -> Program
@@ -105,9 +111,69 @@ cxAt n c x = at2 n c x (C X)
 czAt :: Int -> Int -> Int -> QOp
 czAt n c z = at2 n c z (C Z)
 
+{-
+Bell measurement transfers entanglement |Φ>_{AB}, |Φ>_{CD}  -->  |Φ>_{AD}
+---------------------------------------------------------------------
 
-{-| 
-Long-form explanation:
+Transform between Z-basis and Bell-basis: define the unitary
+
+  U_Bell := (H ⊗ I) · CX_{1→2},
+  U_Bell† = CX_{1→2} · (H ⊗ I).
+
+Using
+
+  CX |x,y> = |x, y xor x>,
+  H |b>    = (1/√2) ∑_x (-1)^(b x) |x>,
+
+we compute, for b,c ∈ {0,1},
+
+  U_Bell† |b,c>
+    = CX (H ⊗ I) |b,c>
+    = (1/√2) ∑_x (-1)^(b x) CX |x,c>
+    = (1/√2) ∑_x (-1)^(b x) |x, c xor x>
+    = (1/√2) ∑_x (-1)^(b x) (I ⊗ X^c) |x, x>
+    = (1/√2) (I ⊗ X^c Z^b) (|00> + |11>)
+    = (I ⊗ X^c Z^b) |Φ+>
+
+Thus U_Bell maps the Bell basis to the Z basis, and Z-measurement outcomes (b,c)
+label the Bell state by the Pauli operator Z^b X^c.
+
+Entanglement swapping with explicit CX/CZ corrections
+-----------------------------------------------------
+
+Start with two Bell pairs
+
+  |Ψ0> = |Φ+>_{AB} ⊗ |Φ+>_{CD}.
+
+Apply U_Bell to qubits (B,C) and measure them in the Z basis, obtaining (b,c).
+The post-measurement state is (up to normalization)
+
+  I_A ⊗ |b>_B ⊗ |c>_C ⊗ (X_D^c Z_D^b) |Φ+>_{AD}.      (1)
+
+Apply post-measurement corrections using the measured qubits as controls:
+
+  CZ_{B→D} ∘ CX_{C→D}.
+
+Since B and C are in computational basis states,
+
+  CZ_{B→D} = Z_D^b,
+  CX_{C→D} = X_D^c.
+
+Applying these to (1) yields
+
+  |b>_B ⊗ |c>_C ⊗ |Φ+>_{AD},
+
+because X^(2c) = Z^(2b) = I.
+
+Thus a Bell measurement on (B,C), followed by controlled-Z from B and
+controlled-X from C, deterministically swaps entanglement:
+
+  |Φ+>_{AB} ⊗ |Φ+>_{CD}  →  |Φ+>_{AD}.
+
+
+--------------------------------------------------------------------------------
+Detailed Description of the Repeater Protocol
+--------------------------------------------------------------------------------
 
 Setup
 -----
