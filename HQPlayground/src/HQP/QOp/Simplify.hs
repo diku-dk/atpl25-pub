@@ -7,6 +7,7 @@ import Data.Function (fix)
 cleanOnes :: QOp -> QOp
 cleanOnes op = case op of
     -- Simplification rules
+    Id n | n <= 0 -> One
     Phase 0       -> Id 0
     C (Id n)      -> Id (n+1)
     R (Id n) _    -> Id n -- TODO: Include phases: C and <+> can make them relative
