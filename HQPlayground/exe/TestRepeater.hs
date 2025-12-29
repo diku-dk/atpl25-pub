@@ -34,7 +34,9 @@ main = do
         b i = 2*i + 1
         t l = b (l-1)
 
-        message = MS.normalize $ ((2^m) >< 1) [c :+ 0 | c <- [1..2^m]] :: CMat         
+        message' = ((2^m) >< 1) [c :+ 0 | c <- [1..2^m]] :: CMat         
+        norm = (sqrt . norm_2) message' :+ 0
+        message = (1 / norm) .* message'  -- normalize the message state
 
         prog = extendprogram (n+m) $ foldr (++) [] [
                 repeater l ++ 
@@ -48,11 +50,13 @@ main = do
 
     putStr $ "\nProgram qubits: " ++ show (map step_qubits prog) ++ "\n\n"
 
-    let psi = ket (replicate n 0) ⊗ message -- initial all-zero state and teleport message
+    let psi_chain = ket (replicate n 0) :: CMat  -- initial all-zero state for Bell-chain qubits
+        psi = psi_chain ⊗ message -- initial all-zero state and teleport message
 
     putStr $ "|ψ_0 ⊗ ψ_m> = "++(showState psi) ++ "\nRunning repeater + teleportation program!\n"
+    putStr $ "State qubits: " ++ show (ilog2 (rows psi)) ++ "\n\n"
 
     let (end_state,outcomes,_) = evalProg prog psi rng0
 
-    putStr $ "Measurement outcomes: " ++ (show outcomes) ++"\n";
-    putStr $ "Final " ++ show n ++ "-qubit state:\n" ++ (showState end_state) ++ "\n\n"
+    putStr $ "Measurement outcomes: " ++ (show outcomes) ++"\n";    
+    putStr $ "Final " ++ show n ++ "-qubit state:\n" ++ (showState $ norm .* end_state) ++ "\n\n"
