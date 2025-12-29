@@ -40,6 +40,8 @@ evalOp op = case op of
          in  s * ((2><2) [1, 1,
                          1,-1])
 
+    SX -> evalOp $ R X (1/2)
+
     R axis q -> 
         let mat  = evalOp axis
             theta = (realToFrac q * pi) :+ 0 -- Haskell won't multiply real and complex numbers
@@ -93,41 +95,37 @@ the remainder together with the updated quantum state.
 -} 
 type Outcomes = [Bool] -- Measurement outcomes as list of bits - latest outcome first
 
-evalStep :: Step -> StateT -> Outcomes -> RNG -> (StateT, Outcomes, RNG)
-evalStep _ _ _ [] = error "No more random numbers. This never happens."
+measure1 :: Int -> (StateT, Outcomes, RNG) -> Int -> (StateT, Outcomes, RNG)
+measure1 _ (_,_,[]) _ = error "No more random numbers. This never happens."
+measure1 n (state, outcomes, (r:rng)) k = let
+    proj0 = measureProjection n k 0
+    proj1 = measureProjection n k 1
 
-evalStep step state outcomes (r:rng)   = case step of
-    Unitary op   -> ((evalOp op) <> state, outcomes, r:rng)
-    Measure []   -> (state, outcomes, r:rng)
-    Measure (k:ks) -> let
-        n = ilog2 (rows state)        
-        proj0 = measureProjection n k 0
-        proj1 = measureProjection n k 1
+    s0 = proj0 <> state
+    s1 = proj1 <> state
 
-        s0 = proj0 <> state
-        s1 = proj1 <> state
+    prob0 = realPart $ inner state s0
+    prob1 = realPart $ inner state s1
 
-        prob0 = realPart $ inner state s0
-        prob1 = realPart $ inner state s1
-        
-        outcome = if (r < prob0) then False else True
-        collapsed_state = normalize $ if(outcome) then s1 else s0
+    outcome = if (r < prob0) then False else True
+    collapsed_state = normalize $ if(outcome) then s1 else s0
 
-        in
-            if (abs(prob1+prob0-1)>tol) then
-                error $ "Probabilities don't sum to 1: " ++ (show (prob0,prob1))
-            else
-                evalStep (Measure ks) collapsed_state  (outcome : outcomes) rng
+    in
+        if (abs(prob1+prob0-1)>tol) then
+            error $ "Probabilities don't sum to 1: " ++ (show (prob0,prob1))
+        else
+            (collapsed_state, outcome:outcomes, rng)
 
-
+evalStep :: (StateT, Outcomes, RNG) -> Step -> (StateT, Outcomes, RNG)
+evalStep (state, outcomes, rng) step = case step of
+    Unitary op -> ((evalOp op) <> state, outcomes, rng)
+    Measure ks -> let n = ilog2 (rows state) in 
+        foldl (measure1 n) (state, outcomes, rng) ks
 
 {-| 'evalProg steps psi0 rng' evaluates a quantum program (a list of steps) on an initial state psi0, using the random number generator rng for measurements. It returns the final state and the remaining RNG. -}
 evalProg :: [Step] -> StateT -> RNG -> (StateT, Outcomes, RNG)
 evalProg steps psi0 rng  =
-  foldl apply_step (psi0, [], rng) steps
-  where
-    apply_step :: (StateT, Outcomes, RNG) -> Step -> (StateT, Outcomes, RNG) -- TODO: Redefine top-level evalStep like this
-    apply_step (psi, outcomes, rng') step = evalStep step psi outcomes rng'
+  foldl evalStep (psi0, [], rng) steps
 
 
 {-| We define a HilbertSpace typeclass, which we will use for states.
