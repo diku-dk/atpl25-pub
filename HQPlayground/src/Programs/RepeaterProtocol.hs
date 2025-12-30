@@ -1,4 +1,4 @@
-module Programs.RepeaterProtocol (repeater, teleport) where
+module Programs.RepeaterProtocol (repeater, teleport, multiqubitRepeater) where
 import HQP
 import Debug.Trace(trace)
 
@@ -36,41 +36,55 @@ Long-form explanation is given at the end of this file, below the code.
 -}
 -- The main function is:
 -- | repeater L
---   1+2) Unitary  U_pre  = (∏_{i=1}^{L-1} (H_{b_{i-1}} ∘ CX_{b_{i-1}→a_i}))
+--   1+2) Unitary U_pre  = (∏_{i=1}^{L-1} (H_{b_{i-1}} ∘ CX_{b_{i-1}→a_i}))
 --                        ∘ (∏_{i=0}^{L-1} (CX_{a_i→b_i} ∘ H_{a_i}))
---   3) Measure  M      = [b_0..b_{L-2}] ++ [a_1..a_{L-1}]
---   4) Unitary  U_corr = ∏_{i=1}^{L-1} (CX_{a_i→t} ∘ CZ_{b_{i-1}→t})
-bellAt        n a b   = cxAt n a b ∘ hAt n a
-bellTransform n b1 a2 = hAt n b1 ∘ cxAt n b1 a2
+--   3) Measure   M      = [b_0..b_{L-2}] ++ [a_1..a_{L-1}]
+--   4) Unitary   U_corr = ∏_{i=1}^{L-1} (CX_{a_i→t} ∘ CZ_{b_{i-1}→t})
+bellAt         n a b     = (cxAt n a b ) ∘ (hAt n a)
+bellTransform  n b1 a2   = (hAt n b1   ) ∘ (cxAt n b1 a2)
+bellCorrection n b1 a2 t = (cxAt n a2 t) ∘ (czAt n b1 t)
 
-repeater :: Int -> Program
-repeater l
-  | l < 1     = []
-  | otherwise =
-      let n = 2*l
-          u_link i = bellAt        n (a i) (b i)                      -- Create chain of Bell pairs
-          u_swap i = bellTransform n (b (i-1)) (a i)  -- Setup for Bell measurement that swaps entanglement ab, cd  -->  ad
-          u_corr i = cxAt n (a i) (t l) ∘ czAt n (b (i-1)) (t l)
+repeater :: [Nat] -> [Nat] -> Program
+repeater sources targets | (length sources) == (length targets) =
+        let 
+          n = 2*length sources
+          u_bells = [bellAt n a b             | (a,b)   <- zip sources targets]
+          u_swaps = [bellTransform  n b1 a2   | (a2,b1) <- zip (tail sources) (init targets) ]
+          u_corrs = [bellCorrection n b1 a2 t | (a2,b1) <- zip (tail sources) (init targets) ]
+            where t = last targets
 
-          u_pre  = foldr (∘) (Id n) (map u_swap [1..l-1])
-                 ∘ foldr (∘) (Id n) (map u_link [0..l-1])
+          u_pre  = foldr (∘) (Id n) u_swaps
+                 ∘ foldr (∘) (Id n) u_bells
 
-          meas   = [ b i | i <- [0..l-2] ] ++ [ a i | i <- [1..l-1] ]
+          meas   = (init targets) ++ (tail sources)
 
-          u_corr_all = foldr (∘) (Id n) (map u_corr [1..l-1])
+          u_corr_all = foldr (∘) (Id n) u_corrs
       in
-        [ Unitary u_pre,
+        [
+          Initialize (sources++targets) (replicate n False),
+          Unitary $ cleanop u_pre,
           Measure meas,
-          Unitary u_corr_all
+          Unitary $ cleanop u_corr_all
         ]
+    | otherwise = error "length sources != length targets"
+
+multiqubitRepeater :: [Nat] -> [Nat] -> Program
+multiqubitRepeater chain_qubits target_qubits = let
+    n = length chain_qubits + length target_qubits
+    (chain_sources,chain_targets) = evenOdd chain_qubits
+  in
+    foldl (++) [] [
+        repeater chain_sources (chain_targets++[t]) | t <- target_qubits
+    ]
 
 teleport :: Int -> Int -> Int -> Int -> Program
-teleport n q source target = -- teleport qubit q using Bell pair (a0,t)
-  [ 
-    Unitary ( hAt n q ∘ cxAt n q source ),
-    Measure [ q, source ],
-    Unitary ( cxAt n source target ∘ czAt n q target )
-  ]
+teleport n q source target = let -- teleport qubit q using Bell pair (a0,t)
+    prog = [ 
+      Unitary $ cleanop ( hAt n q ∘ cxAt n q source ),
+      Measure [ q, source ],
+      Unitary $ cleanop ( cxAt n source target ∘ czAt n q target )]
+  in 
+    trace ("\n\nTeleport "++(show (n,q,source,target)++" = "++(showProgram prog++"\n"))) prog
 
 --------------------------------------------------------------------------------
 -- Auxiliary functions

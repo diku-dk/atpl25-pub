@@ -30,7 +30,9 @@ step_qubits :: Step -> Nat
 step_qubits step = case step of 
   Unitary op -> op_qubits op
   Measure ks -> 1 + maximum ks
+  Initialize ks _ -> 1 + maximum ks
 
+           
 prog_qubits :: Program -> Nat
 prog_qubits program = maximum $ map step_qubits program
 
@@ -51,6 +53,12 @@ toBits' n k = let
 -- | Integer logarithm base 2 - change to floor{log_2 n} or ceil{log_2 n}.
 ilog2 :: (FiniteBits a, Integral a) => a -> Nat
 ilog2 = countTrailingZeros
+
+evenOdd :: [a] -> ([a],[a])
+evenOdd [] = ([],[])
+evenOdd [x] = ([x],[])
+evenOdd (x:y:xs) = let (es,os) = evenOdd xs in (x:es,y:os)
+
 
 
 invertPerm :: [Int] -> [Int]
