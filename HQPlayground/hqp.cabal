@@ -49,8 +49,9 @@ library core
         hmatrix,
         random,
         mtl,
-    	vector-sized,
-    	finite-typelits
+        array,
+    	  vector-sized,
+    	  finite-typelits
     hs-source-dirs:   src
 
 common exe-common
@@ -83,9 +84,6 @@ executable YesTeleportation
 executable TestRepeater
   import: exe-common
   main-is: TestRepeater.hs
-  profiling: True
-  library-profiling: True
-  executable-profiling: True
   build-depends:
     random
   ghc-options:
