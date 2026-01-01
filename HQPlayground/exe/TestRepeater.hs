@@ -32,7 +32,7 @@ main = do
     -- let rng0 = [0.9,0.9..]
 
     let m = 3  -- number of message qubits to teleport
-        l = 1  -- number of links between source and target nodes
+        l = 0  -- number of links between source and target nodes
         n = 3*m+2*l
     
     let message_qubits =                [0..m-1] -- m message qubits
@@ -50,10 +50,11 @@ main = do
         message' = ((2^m) >< 1) [c :+ 0 | c <- [0,1..2^m-1]] :: CMat         
         norm    = norm_2 message' :+ 0
         message = (1 / norm) .* message'  -- normalize the message state
+        --message = ket (replicate m 0)
         
         repeater_prog = multiqubitRepeater n source_qubits  chain_qubits target_qubits
         teleport_prog = multiqubitTeleport n message_qubits source_qubits target_qubits
-        prog = repeater_prog -- ++ teleport_prog
+        prog = repeater_prog ++ teleport_prog
         
         
     putStr $ "|ψ_m> = "++(showState message) ++ "\n"
