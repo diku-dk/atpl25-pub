@@ -1,4 +1,4 @@
-module Programs.RepeaterProtocol (repeater, teleport, multiqubitRepeater) where
+module Programs.RepeaterProtocol (repeater, teleport, multiqubitRepeater,bellAt) where
 import HQP
 import Debug.Trace(trace)
 
@@ -44,10 +44,10 @@ bellAt         n a b     = (cxAt n a b ) ∘ (hAt n a)
 bellTransform  n b1 a2   = (hAt n b1   ) ∘ (cxAt n b1 a2)
 bellCorrection n b1 a2 t = (cxAt n a2 t) ∘ (czAt n b1 t)
 
-repeater :: [Nat] -> [Nat] -> Program
-repeater sources targets | (length sources) == (length targets) =
+repeater :: Nat -> [Nat] -> [Nat] -> Program
+repeater n sources targets | (length sources) == (length targets) =
         let 
-          n = 2*length sources
+          l = length sources -- trace("repeater "++show (n,sources,targets)) 
           u_bells = [bellAt n a b             | (a,b)   <- zip sources targets]
           u_swaps = [bellTransform  n b1 a2   | (a2,b1) <- zip (tail sources) (init targets) ]
           u_corrs = [bellCorrection n b1 a2 t | (a2,b1) <- zip (tail sources) (init targets) ]
@@ -60,21 +60,23 @@ repeater sources targets | (length sources) == (length targets) =
 
           u_corr_all = foldr (∘) (Id n) u_corrs
       in
+        --trace ("repeater " ++ show (n,sources,targets))
         [
-          Initialize (sources++targets) (replicate n False),
-          Unitary $ cleanop u_pre,
+          Initialize (sources++targets) (replicate (2*l) False),
+          Unitary $  u_pre,
           Measure meas,
-          Unitary $ cleanop u_corr_all
+          Unitary $ u_corr_all,
+          Initialize (tail sources ++ init targets) (replicate (2*l-2) False)
         ]
-    | otherwise = error "length sources != length targets"
+    | otherwise = error $ "length sources " ++ show sources ++ " != length targets " ++ show targets
 
-multiqubitRepeater :: [Nat] -> [Nat] -> Program
-multiqubitRepeater chain_qubits target_qubits = let
-    n = length chain_qubits + length target_qubits
+multiqubitRepeater :: Nat -> [Nat] -> [Nat] -> [Nat] -> Program
+multiqubitRepeater n source_qubits chain_qubits target_qubits = let
     (chain_sources,chain_targets) = evenOdd chain_qubits
   in
+    --trace ("multiqubitRepeater "++ show (n,source_qubits,chain_qubits,target_qubits) ++ " -> " ++   show (chain_sources,chain_targets))
     foldl (++) [] [
-        repeater chain_sources (chain_targets++[t]) | t <- target_qubits
+        repeater n (s:chain_sources) (chain_targets++[t]) | (s,t) <- zip source_qubits target_qubits
     ]
 
 teleport :: Int -> Int -> Int -> Int -> Program
@@ -84,7 +86,8 @@ teleport n q source target = let -- teleport qubit q using Bell pair (a0,t)
       Measure [ q, source ],
       Unitary $ cleanop ( cxAt n source target ∘ czAt n q target )]
   in 
-    trace ("\n\nTeleport "++(show (n,q,source,target)++" = "++(showProgram prog++"\n"))) prog
+    --trace ("\n\nTeleport "++(show (n,q,source,target)++" = "++(showProgram prog++"\n"))) 
+    prog
 
 --------------------------------------------------------------------------------
 -- Auxiliary functions
@@ -124,13 +127,13 @@ hAt :: Int -> Int -> QOp
 hAt n i = Id i ⊗ H ⊗ Id (n-i-1)
 
 cAt :: Int -> QOp  -> Int -> Int -> QOp
-cAt n op s t = let 
+cAt n op s t = let   
   (c,x,hh) = if s < t then (s,t,Id n) 
              else (t,s,hAt n s ∘ hAt n t)  -- swap control and target by conjugating with H
   
-  res = hh ∘ Id c ⊗ C (Id (x-c-1) ⊗ op) ⊗ Id (n-x-1) ∘ hh
+  res = cleanop $ hh ∘ Id c ⊗ C (Id (x-c-1) ⊗ op) ⊗ Id (n-x-1) ∘ hh  
   in
-    --trace ("cAt " ++ show n ++ " " ++ show s ++ " " ++ show t ++ " = " ++ showOp res) 
+    --trace("cAt "++show (n,op,s,t)++": "++showOp res++", "++show (op_qubits res)++" qubits")
     res
 
 cxAt :: Int -> Int -> Int -> QOp

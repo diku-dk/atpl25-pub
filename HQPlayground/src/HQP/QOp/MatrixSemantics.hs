@@ -3,10 +3,13 @@
 module HQP.QOp.MatrixSemantics where
 
 import HQP.QOp.Syntax
+import HQP.QOp.Simplify
 import HQP.PrettyPrint.PrettyOp
 import HQP.QOp.HelperFunctions
 import Numeric.LinearAlgebra hiding(normalize,step,(<>)) -- the hmatrix library
-import Data.Bits(shiftL)
+import Data.Bits(shiftL,xor)
+import Data.Array(accumArray,elems)
+import Data.List(sort)
 import Debug.Trace(trace)
 
 type CMat = Matrix ComplexT
@@ -63,11 +66,14 @@ evalOp op = case op of
                             mI  = ident (rows mop)
                         in
                             mI <+> mop -- |0><0| ⊗ I^n + |1><1| ⊗ op1
-
-    DirectSum op1 op2 -> (evalOp op1) <+> (evalOp op2)
+    
     Tensor    op1 op2 -> (evalOp op1)  ⊗  (evalOp op2)
-    Compose   op1 op2 -> trace (showOp op1 ++ " compose " ++ showOp op2) $ 
-                         (evalOp op1)  ∘  (evalOp op2) 
+    Compose   op1 op2 | (op_qubits op1 == op_qubits op2) -> (evalOp op1)  ∘  (evalOp op2)  
+                      | otherwise -> error $ 
+                       "\n\nDim-mismatch: " ++ showOp op1 ++ " ∘ " ++ showOp op2 ++ "\n"
+    DirectSum op1 op2 | (op_qubits op1 == op_qubits op2) -> (evalOp op1)  <+> (evalOp op2)  
+                      | otherwise -> error $ 
+                       "\n\nDim-mismatch: " ++ showOp op1 ++ "<+>" ++ showOp op2 ++ "\n"
     Adjoint op1         -> adj $ evalOp op1
 
 
@@ -96,8 +102,11 @@ To deal with random measurements in a pure functional setting, we treat a random
 We take a random number generator as the first parameter, read off the first element, and return
 the remainder together with the updated quantum state.
 -} 
-type Outcomes = [Bool] -- Measurement outcomes as list of bits - latest outcome first
+type Outcomes = [Bool] -- Measurement outcomes as list of bits
 
+{-| measure1 measures a single qubit, projecting the state on the subspace corresponding to the 
+    outcome, and prepends the outcome to the list of outcomes -}
+ 
 measure1 :: Int -> (StateT, Outcomes, RNG) -> Int -> (StateT, Outcomes, RNG)
 measure1 _ (_,_,[]) _ = error "No more random numbers. This never happens."
 measure1 n (state, outcomes, (r:rng)) k = let
@@ -119,21 +128,36 @@ measure1 n (state, outcomes, (r:rng)) k = let
         else
             (collapsed_state, outcome:outcomes, rng)
 
+
 evalStep :: (StateT, Outcomes, RNG) -> Step -> (StateT, Outcomes, RNG)
-evalStep (state, outcomes, rng) step = trace("evalStep"++ show step) $ case step of
-    Unitary op -> ((evalOp op) <> state, outcomes, rng)
-    Measure ks -> let n = ilog2 (rows state) in 
-        foldl (measure1 n) (state, outcomes, rng) ks
-    Initialize qs vs -> let
-        n = rows state        
-        (st,os,rng') = evalStep (state,[],rng) $ Measure qs 
-        correction = foldr (∘) (Id n) $ map (\(o,v) -> if (o/=v) then X else I) (zip os vs)
+evalStep (state, outcomes, rng) step = -- trace("evalStep "++ show step) $ 
+    let n = ilog2 (rows state) in case step of
+    Unitary op | (op_qubits op == n) -> ((evalOp op) <> state, outcomes, rng)
+               | otherwise -> error $ "Dim-mismatch between " ++ showOp op ++ " and n="++show n
+
+    -- outcomes are latest-first, so ks is reversed on input
+    Measure ks -> foldl (measure1 n) (state, outcomes, rng) (reverse ks) 
+
+    Initialize ks vs -> let
+        (st,os,rng') = evalStep (state,[],rng) $ Measure ks 
+
+        -- List of outcomes xor values for each initialized qubit
+        corrections = zipWith xor os vs
+        -- Now we build the full list, including unaffected qubits
+    
+        corrections_full    = accumArray xor False (0,n-1) (zip ks corrections)
+    
+        correction_operator = cleanop $ foldl (⊗) One [if c then X else I | c <-elems corrections_full]
+        
+        (st',os',rng'') = evalStep (st,outcomes,rng') (Unitary correction_operator)
         in
-            trace("vs = " ++ show vs)
-            trace("os = " ++ show os)
-            trace("correction = " ++ showOp correction)
-            -- return outcomes for explicit measurements, so evalStep on input outcomes
-            evalStep (st,outcomes,rng') (Unitary correction)
+            --trace("vs = " ++ show vs)
+            --trace("os = " ++ show os)
+            --trace("corrections = " ++ show corrections)
+            --trace("correction_operator = " ++ showOp correction_operator)
+            --trace("st  = " ++ show st) 
+            --trace("st' = " ++ show st') 
+            (st',os',rng'')
 
 {-| 'evalProg steps psi0 rng' evaluates a quantum program (a list of steps) on an initial state psi0, using the random number generator rng for measurements. It returns the final state and the remaining RNG. -}
 evalProg :: [Step] -> StateT -> RNG -> (StateT, Outcomes, RNG)
