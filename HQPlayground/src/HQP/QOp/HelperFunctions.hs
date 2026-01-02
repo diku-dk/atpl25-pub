@@ -2,26 +2,19 @@ module HQP.QOp.HelperFunctions where
 import HQP.QOp.Syntax
 import Data.Bits(FiniteBits,countTrailingZeros,shiftL,shiftR)
 import Data.List (sort)
-import Data.Set  (union, fromList, toList)
+import qualified Data.Set as S
 
 
 -- | Signature of an operator a: C^{2^m} -> C^{2^n} is (m,n) = (op_domain a, op_range a)
 op_qubits :: QOp -> Nat
 op_qubits op = case op of
-    Id n    -> n
-    Phase _ -> 0
-    R a _   -> op_qubits a
-    C a     -> 1 + op_qubits a
+    Id n          -> n
+    Phase _       -> 0
+    R a _         -> op_qubits a
+    C a           -> 1 + op_qubits a
     Tensor    a b -> op_qubits a + op_qubits b
-    DirectSum a b -> let  
-      (w_a, w_b) = (op_qubits a, op_qubits b)
-      in 
-        if w_a == w_b then 1+w_a 
-        else 
-          error $ "Direct sum of incompatible operator dimensions: " 
-          ++ show w_a ++ " qubits /= " ++ show w_b ++ " qubits."
-
-    Compose   a b -> max (op_qubits a) (op_qubits b)
+    DirectSum a b -> 1 + op_qubits a -- Assume op_qubits a == op_qubits b is type checked
+    Compose   a b -> op_qubits a     -- Assume op_qubits a == op_qubits b is type checked
     Adjoint   a   -> op_qubits a
     Permute   ks  -> length ks 
     _             -> 1 -- 1-qubit gates
@@ -40,24 +33,26 @@ prog_qubits :: Program -> Nat
 prog_qubits program = maximum $ map step_qubits program
 
 -- | Support of an operator: the list of qubits it acts non-trivially on.
-op_support :: QOp -> [Nat]
+op_support :: QOp -> Set Nat
 op_support op = let
-    shift ns k = map (+k) ns
-    union xs ys = toList $ Data.Set.union (fromList xs) (fromList ys)
+    shift ns k   = S.map (+k) ns
+    union xs ys  = S.union xs ys
+    permute_support pi sup = S.fromList [ i | (i,j) <- zip [0..] pi, S.member j sup ]
+    permute_support_inv pi sup = S.fromList [ j | (i,j) <- zip [0..] pi, S.member i sup ]
   in case op of
-  Id n       -> []
-  Phase _    -> []
-  R _ 0      -> []
+  Id n          -> S.empty
+  Phase _       -> S.empty
+  R _ 0         -> S.empty
   R a _         -> op_support a
-  C a           -> [0] ++ (op_support a) `shift` 1
-  Tensor a b    -> (op_support a) ++ (op_support b) `shift` (op_qubits a)
-  DirectSum a b -> [0] ++ (union (op_support a) (op_support b) `shift` 1)
-  Compose (Permute ks) b -> permApply ks (op_support b)
-  Compose a (Permute ks) -> invertPerm ks `permApply` (op_support a)
+  C a           -> S.insert 0 ((op_support a) `shift` 1)
+  Tensor a b    -> (op_support a) `union` ((op_support b) `shift` (op_qubits a))
+  DirectSum a b -> S.insert 0 ((op_support a `union` op_support b) `shift` 1)
+  Compose (Permute ks) b -> permute_support ks (op_support b)
+  Compose a (Permute ks) -> permute_support_inv ks (op_support a)
   Compose a b   -> union (op_support a) (op_support b)
   Adjoint a     -> op_support a
   Permute ks    -> permSupport ks
-  _             -> [0] -- 1-qubit gates
+  _             -> S.singleton 0 -- 1-qubit gates
 
 
 -- Small helper functions
@@ -72,9 +67,9 @@ toBits' n k = let
   in
     (replicate (n-m) 0) ++ bits
 
--- | Integer logarithm base 2 - change to floor{log_2 n} or ceil{log_2 n}.
+-- | ilog2 m = floor (log2 m) for m >= 0
 ilog2 :: (FiniteBits a, Integral a) => a -> Nat
-ilog2 = countTrailingZeros
+ilog2 m = finiteBitSize m - countLeadingZeros m
 
 evenOdd :: [a] -> ([a],[a])
 evenOdd [] = ([],[])
