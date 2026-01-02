@@ -134,6 +134,7 @@ evalStep (state, outcomes, rng) step = -- trace("evalStep "++ show step) $
     let n = ilog2 (rows state) in case step of
     Unitary op | (op_qubits op == n) -> ((evalOp op) <> state, outcomes, rng)
                | otherwise -> error $ "Dim-mismatch between " ++ showOp op ++ " and n="++show n
+               ++ "-state " ++ show state
 
     -- outcomes are latest-first, so ks is reversed on input
     Measure ks -> foldl (measure1 n) (state, outcomes, rng) (reverse ks) 
@@ -165,20 +166,6 @@ evalProg steps psi0 rng  =
   foldl evalStep (psi0, [], rng) steps
 
 
-{-| We define a HilbertSpace typeclass, which we will use for states.
-    Tensor product, direct sum, adjoint, and composition are inherited from Operator. 
- -}
-class (Scalar v ~ Complex (Realnum v), Floating (Realnum v)) => HilbertSpace v where
-  type Realnum v 
-  type Scalar  v 
-
-  (.*)  :: Scalar v -> v -> v -- Scalar-vector multiplication
-  (.+)  :: v -> v -> v        -- Vector-vector addition
-  
-  inner :: v -> v -> Scalar v -- Inner product 
-  norm  :: v -> Realnum v     -- Vector 2-norm  
-  norm a = sqrt(realPart $ inner a a)  
-
 {-|
  - The tensor product of two operators in matrix representation a :: (m><n) and b :: (p><q) is the kronecker product c :: (m*p >< n*q) with entries c_{i*p+k, j*q+l} = a_{ij}*b_{kl} 
 
@@ -186,14 +173,17 @@ class (Scalar v ~ Complex (Realnum v), Floating (Realnum v)) => HilbertSpace v w
 
  - The operator adjoint in matrix representation is the conjugate transpose.
 -}    
-
-instance Operator CMat where
-    tensorProd = kronecker
-    directSum a b = fromBlocks [[a, zeros (rows a) (cols b)],
-                                [zeros (rows b) (cols a), b]]
+instance HasAdjoint CMat where
     adj = tr -- HMatrix confusingly defines conjugate transpose as 'tr' (standard trace notation)
 
+instance HasTensorProduct CMat where
+    (⊗) = kronecker
 
+instance HasDirectSum CMat where
+    (⊕) a b = fromBlocks [[a, zeros (rows a) (cols b)],
+                          [zeros (rows b) (cols a), b]]
+
+instance Operator CMat
 
 {-| We implement ket-states as (n >< 1) matrices (= column vectors), and bra-states as (1 >< n) matrices (= row vectors). Thus StateT inherits the operator operations (recall that states
 are also linear operators by Riesz representation), but we can also treat them like vectors,
