@@ -14,7 +14,7 @@ qftrev n = (qftrev (n-1) ⊗ I) ∘ layer n
 -- | QFT layer acting on qubit n
 layer :: Int -> QOp  -- acts on n qubits; targets last qubit
 layer n = let
-        phases_at_n = foldr (∘) One [ cR k n | k <- [1..n-1] ] 
+        phases_at_n = foldr (∘) (Id n) [ cR k n | k <- [1..n-1] ] 
         h_at_n    = (Id (n-1)) ⊗ H
     in 
         phases_at_n ∘ h_at_n
