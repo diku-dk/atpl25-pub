@@ -1,13 +1,7 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UnicodeSyntax #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+
 
 -- Renamed as requested.
 module HQP.QOp.Semantics
@@ -57,9 +51,10 @@ class ( HilbertSpace (StateT b)
   
   -- | evalStep and evalProg can be defined independently of the backend,
   --   given measure1, stateQubits, and evalOp.
+      
   evalStep :: (StateT b, Outcomes, RNG) -> Step -> (StateT b, Outcomes, RNG)
   evalStep (st, outs, rng) step = let n = stateQubits @b st in case step of
-    Unitary op | (op_qubits op == n) -> (apply (evalOp @b op) st, outs, rng)
+    Unitary op | (n_qubits op == n) -> (apply @b (evalOp @b op :: OpT b) st, outs, rng)
                | otherwise -> error $ "Dim-mismatch between " ++ showOp op ++ " and n="++show n
 
     -- outcomes are latest-first, so ks is reversed on input

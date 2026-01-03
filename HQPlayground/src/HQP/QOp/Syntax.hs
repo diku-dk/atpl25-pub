@@ -96,8 +96,8 @@ class HasDirectSum o where
   (<+>) :: o -> o -> o
   (<+>) = (⊕)
 
-class HasAdjoint o where
-  adj :: o -> o
+class HasAdjoint o where adj :: o -> o
+class HasQubits o where n_qubits :: o -> Nat
 
 instance Semigroup QOp where
   (<>) = Compose
@@ -105,8 +105,11 @@ instance Semigroup QOp where
 instance HasTensorProduct QOp where (⊗) = Tensor
 instance HasDirectSum QOp     where (⊕) = DirectSum
 instance HasAdjoint QOp       where adj = Adjoint
+instance HasQubits QOp where  n_qubits op = op_qubits op
 instance Operator QOp
 
+type Outcomes = [Bool]     -- head = most recent
+type RNG      = [Double]   -- infinite steam in [0,1)
 
 infixr 8 ⊗, <.>
 infixr 7 ⊕, <+>
@@ -119,3 +122,16 @@ infixr 6 ∘, >:
 
 infixr 5 @>, <@
 
+
+op_qubits :: QOp -> Nat
+op_qubits op = case op of
+    Id n          -> n
+    Phase _       -> 0
+    R a _         -> op_qubits a
+    C a           -> 1 + op_qubits a
+    Tensor    a b -> op_qubits a + op_qubits b
+    DirectSum a _ -> 1 + op_qubits a -- Assume op_qubits a == op_qubits b is type checked
+    Compose   a _ -> op_qubits a     -- Assume op_qubits a == op_qubits b is type checked
+    Adjoint   a   -> op_qubits a
+    Permute   ks  -> length ks 
+    _             -> 1 -- 1-qubit gates

@@ -41,8 +41,6 @@ library core
       -- QOp program transformations for optimization and analysis:
       HQP.QOp.Simplify 
       HQP.QOp.HelperFunctions
-      -- Semantics backend API typeclass
-      HQP.QOp.Semantics           
       -- Matrix semantics backend implementation:
       HQP.QOp.MatrixSemantics     
       -- Stabilizer semantics backend implementation:

@@ -6,18 +6,7 @@ import qualified Data.Set as S
 
 
 -- | Signature of an operator a: C^{2^m} -> C^{2^n} is (m,n) = (op_domain a, op_range a)
-op_qubits :: QOp -> Nat
-op_qubits op = case op of
-    Id n          -> n
-    Phase _       -> 0
-    R a _         -> op_qubits a
-    C a           -> 1 + op_qubits a
-    Tensor    a b -> op_qubits a + op_qubits b
-    DirectSum a _ -> 1 + op_qubits a -- Assume op_qubits a == op_qubits b is type checked
-    Compose   a _ -> op_qubits a     -- Assume op_qubits a == op_qubits b is type checked
-    Adjoint   a   -> op_qubits a
-    Permute   ks  -> length ks 
-    _             -> 1 -- 1-qubit gates
+
 
 op_dimension :: QOp -> Nat
 op_dimension op = 1 `shiftL` (op_qubits op)

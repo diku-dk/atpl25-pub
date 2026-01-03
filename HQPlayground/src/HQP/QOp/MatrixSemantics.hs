@@ -4,7 +4,6 @@ module HQP.QOp.MatrixSemantics where
 
 import HQP.QOp.Syntax
 import HQP.QOp.Simplify
-import HQP.QOp.Semantics
 import HQP.PrettyPrint.PrettyOp
 import HQP.QOp.HelperFunctions
 import Numeric.LinearAlgebra hiding(normalize,step,(<>)) -- the hmatrix library
@@ -15,117 +14,125 @@ import Debug.Trace(trace)
 
 type CMat = Matrix ComplexT
 type RMat = Matrix RealT
+type StateT = CMat
+type OpT    = CMat
 
-data MatrixSemantics
 {-| 
  evalOp :: Op -> CMat
  (evalOp op) evaluates the pure quantum operator op (defined in Circuit.hs) in the matrix semantics, and produces a complex matrix of dimension 2^n x 2^n (where n is the qubit-length of op)
 -}
-instance SemanticsBackend MatrixSemantics where
-  type StateT MatrixSemantics = CMat
-  type OpT    MatrixSemantics = CMat
 
-  stateQubits = ilog2 . rows
-  opQubits    = ilog2 . rows
+apply :: OpT -> StateT -> StateT
+apply op state = op <> state
 
-  measure1 :: (CMat, Outcomes, RNG) -> Nat -> (CMat, Outcomes, RNG)
-  measure1 (state, outcomes, (r:rng)) k = let
-        n = ilog2 (rows state)
-        proj0 = measureProjection n k 0
-        proj1 = measureProjection n k 1
+measure1 :: (CMat, Outcomes, RNG) -> Nat -> (CMat, Outcomes, RNG)
+measure1 (state, outcomes, (r:rng)) k = let
+      n = ilog2 (rows state)
+      proj0 = measureProjection n k 0
+      proj1 = measureProjection n k 1
 
-        s0 = proj0 <> state
-        s1 = proj1 <> state
+      s0 = proj0 <> state
+      s1 = proj1 <> state
 
-        prob0 = realPart $ inner state s0
-        prob1 = realPart $ inner state s1
+      prob0 = realPart $ inner state s0
+      prob1 = realPart $ inner state s1
 
-        outcome = if (r < prob0) then False else True
-        collapsed_state = normalize $ if(outcome) then s1 else s0
+      outcome = if (r < prob0) then False else True
+      collapsed_state = normalize $ if(outcome) then s1 else s0
 
-        in
-            if (abs(prob1+prob0-1)>tol) then
-                error $ "Probabilities don't sum to 1: " ++ (show (prob0,prob1))
-            else
-                (collapsed_state, outcome:outcomes, rng)
-  
-  measure1 (_,_,[]) _ = error "No more random numbers. This never happens."
+      in
+          if (abs(prob1+prob0-1)>tol) then
+              error $ "Probabilities don't sum to 1: " ++ (show (prob0,prob1))
+          else
+              (collapsed_state, outcome:outcomes, rng)
+
+measure1 (_,_,[]) _ = error "No more random numbers. This never happens."
 
   {-| bra [v0,...,v_{n-1}] (where v_j is 0 or 1) is the adjoint state <v0 v1 ... v_{n-1}|. In the matrix representation, this is a row-vector in C^{2^n}, i.e. of dimension (1 >< 2^n). -}
-  ket []     = (1><1) [1]
-  ket (v':vs) = let 
-        v = v' :+ 0
-    in 
-        (2><1) [1-v,v] ⊗ (ket vs)
+ket :: [Int] -> CMat
+ket []     = (1><1) [1]
+ket (v':vs) = let 
+      v = fromIntegral v' :+ 0
+  in 
+      (2><1) [1-v,v] ⊗ (ket vs)
 
-  evalOp :: QOp -> CMat
-  evalOp op = case op of
-    Id n -> ident (2^n)
+evalOp :: QOp -> CMat
+evalOp op = case op of
+  Id n -> ident (2^n)
 
-    Phase q -> let theta = (realToFrac q * pi) :+ 0 
-               in  scalar (exp (ii*theta))
+  Phase q -> let theta = (realToFrac q * pi) :+ 0 
+             in  scalar (exp (ii*theta))
 
-    I -> (2 >< 2) [1,0,
-                   0,1]
+  I -> (2 >< 2) [1,0,
+                 0,1]
 
-    X -> (2 >< 2) [0,1,
-                   1,0]
+  X -> (2 >< 2) [0,1,
+                 1,0]
 
-    Y -> (2 >< 2) [-ii, 0,
-                    0, ii]
+  Y -> (2 >< 2) [-ii, 0,
+                  0, ii]
 
-    Z -> (2 >< 2) [1,0,
-                   0,-1]
+  Z -> (2 >< 2) [1,0,
+                 0,-1]
 
-    H -> let s = 1/sqrt 2
-         in  s * ((2><2) [1, 1,
-                         1,-1])
+  H -> let s = 1/sqrt 2
+       in  s * ((2><2) [1, 1,
+                       1,-1])
 
-    SX -> evalOp $ R X (1/2)
+  SX -> evalOp $ R X (1/2)
 
-    R axis q -> 
-        let mat  = evalOp axis
-            theta = (realToFrac q * pi) :+ 0 -- Haskell won't multiply real and complex numbers
-        in
-            matFunc exp ( (-ii*theta/2) .* mat )
+  R axis q -> 
+      let mat  = evalOp axis
+          theta = (realToFrac q * pi) :+ 0 -- Haskell won't multiply real and complex numbers
+      in
+          matFunc exp ( (-ii*theta/2) .* mat )
 
-    Permute ks -> let
-                        n = length ks
-                        dims = 1 `shiftL` n
-                        indices = [ (i, foldl (\acc (bit,pos) -> acc + (bit `shiftL` pos)) 0 (zip (toBits' n i) ks)) | i <- [0..dims-1] ]
-                        values  = replicate dims (1 :+ 0)
-                    in
-                        assoc (dims,dims) (0 :+ 0) (zip indices values)
-                                            
-    C op1          ->  let 
-                            mop = evalOp op1
-                            mI  = ident (rows mop)
-                        in
-                            mI <+> mop -- |0><0| ⊗ I^n + |1><1| ⊗ op1
-    
-    Tensor    op1 op2 -> (evalOp op1)  ⊗  (evalOp op2)
-    Compose   op1 op2 | (op_qubits op1 == op_qubits op2) -> (evalOp op1)  ∘  (evalOp op2)  
-                      | otherwise -> error $ 
-                       "\n\nDim-mismatch: " ++ showOp op1 ++ " ∘ " ++ showOp op2 ++ "\n"
-    DirectSum op1 op2 | (op_qubits op1 == op_qubits op2) -> (evalOp op1)  <+> (evalOp op2)  
-                      | otherwise -> error $ 
-                       "\n\nDim-mismatch: " ++ showOp op1 ++ "<+>" ++ showOp op2 ++ "\n"
-    Adjoint op1       -> adj $ evalOp op1
-
---------------------------------------------------------------------------------
-
---  State contruction: An n-qubit state can be represented by a vector in C^{2^n} (we'll later see potentially more compact representations). 
+  Permute ks -> let
+                      n = length ks
+                      dims = 1 `shiftL` n
+                      indices = [ (i, foldl (\acc (bit,pos) -> acc + (bit `shiftL` pos)) 0 (zip (toBits' n i) ks)) | i <- [0..dims-1] ]
+                      values  = replicate dims (1 :+ 0)
+                  in
+                      assoc (dims,dims) (0 :+ 0) (zip indices values)
+                                          
+  C op1          ->  let 
+                          mop = evalOp op1
+                          mI  = ident (rows mop)
+                      in
+                          mI <+> mop -- |0><0| ⊗ I^n + |1><1| ⊗ op1
+  
+  Tensor    op1 op2 -> (evalOp op1)  ⊗  (evalOp op2)
+  Compose   op1 op2 | (op_qubits op1 == op_qubits op2) -> (evalOp op1)  ∘  (evalOp op2)  
+                    | otherwise -> error $ 
+                     "\n\nDim-mismatch: " ++ showOp op1 ++ " ∘ " ++ showOp op2 ++ "\n"
+  DirectSum op1 op2 | (op_qubits op1 == op_qubits op2) -> (evalOp op1)  <+> (evalOp op2)  
+                    | otherwise -> error $ 
+                     "\n\nDim-mismatch: " ++ showOp op1 ++ "<+>" ++ showOp op2 ++ "\n"
+  Adjoint op1       -> adj $ evalOp op1
 
 
+evalStep :: (StateT, Outcomes, RNG) -> Step -> (StateT, Outcomes, RNG)
+evalStep (st, outs, rng) step = let n = n_qubits st in case step of
+    Unitary op | (n_qubits op == n) -> (apply (evalOp op) st, outs, rng)
+               | otherwise -> error $ "Dim-mismatch between " ++ showOp op ++ " and n="++show n
 
+    -- outcomes are latest-first, so ks is reversed on input
+    Measure ks -> foldl measure1 (st, outs, rng) (reverse ks)
 
-{-| 'evalStep rng step state' evaluates a computational step (unitary or measurement) given the current state and returns the modified quantum state. 
+    Initialize ks vs ->
+      let
+        (st', os, rng') = evalStep (st, [], rng) (Measure ks)
+        -- List of outcomes xor values for each initialized qubit
+        corrections     = zipWith xor os vs
+        -- Now we build the full list, including unaffected qubits        
+        corrFull        = accumArray xor False (0,n-1) (zip ks corrections)
+        corrOp          = foldl (⊗) One [ if c then X else I | c <- elems corrFull ]
+      in evalStep (st', outs, rng') (Unitary corrOp)
 
-To deal with random measurements in a pure functional setting, we treat a random number generator rng as an infinite list of numbers between 0 and 1. This allows the library to remain pure - IO comes in from program mains. 
+  -- | evalProg simply executes a program step by step
+evalProg :: Program -> StateT -> RNG -> (StateT, Outcomes, RNG)
+evalProg steps psi0 rng0 = foldl evalStep (psi0, [], rng0) steps
 
-We take a random number generator as the first parameter, read off the first element, and return
-the remainder together with the updated quantum state.
--} 
 
 
 {-| measure1 measures a single qubit, projecting the state on the subspace corresponding to the 
@@ -139,14 +146,13 @@ the remainder together with the updated quantum state.
 
  - The operator adjoint in matrix representation is the conjugate transpose.
 -}    
-instance HasTensorProduct CMat where
-    (⊗) = kronecker
 
+instance HasTensorProduct CMat where (⊗) = kronecker
+instance HasAdjoint CMat where adj = tr -- HMatrix confusingly defines conjugate transpose as 'tr' 
+instance HasQubits CMat where  n_qubits op = ilog2 (rows op)
 instance HasDirectSum CMat where
     (⊕) a b = fromBlocks [[a, zeros (rows a) (cols b)],
                           [zeros (rows b) (cols a), b]]
-instance HasAdjoint CMat where
-    adj = tr -- HMatrix confusingly defines conjugate transpose as 'tr' (standard trace notation)
 
 instance Operator CMat
 
@@ -188,9 +194,10 @@ I ⨷ ... ⨷ I ⨷ P ⨷ I ⨷ ... ⨷ I
  \------------ n ------------/
 -}
 measureProjection :: Int -> Int -> Int -> CMat
-measureProjection n k v = let     
-        p = (2><2) [(1-v) :+ 0,      0,
-                    0,          v :+ 0]
+measureProjection n k v' = let     
+        v = fromIntegral v' :+ 0
+        p = (2><2) [1-v,0,
+                    0,  v]
     in
         evalOp(Id k) ⊗ p ⊗ evalOp (Id (n-k-1))
 
