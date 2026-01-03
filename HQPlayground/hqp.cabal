@@ -24,7 +24,12 @@ common common-options
         TypeSynonymInstances,
         BinaryLiterals,
         PatternSynonyms,
-	      ViewPatterns
+        ViewPatterns,
+        LambdaCase,
+        AllowAmbiguousTypes,
+        TypeApplications,
+        ScopedTypeVariables,
+        GeneralizedNewtypeDeriving        
 
 library core
     import:   warnings, common-options
