@@ -1,20 +1,23 @@
 module Main where 
 
 import HQP.QOp
+import HQP.QOp.Semantics
 import HQP.QOp.MatrixSemantics
 import HQP.PrettyPrint
 
-state1q :: ComplexT -> ComplexT -> StateT
+type SemState = StateT MatrixSemantics
+
+state1q :: ComplexT -> ComplexT -> SemState
 state1q a b = a .* ket [0] + b .* ket [1]
 
 {-|
   Clones the full state of a 1-qubit state |ψ> into a 2-qubit state |ψψ>
   Not a physically realizable operation due to the No-cloning theorem!
  -}
-quantum_cloned_state :: StateT -> StateT 
+quantum_cloned_state :: SemState -> SemState 
 quantum_cloned_state ψ = ψ ⊗ ψ
 
-cx_cloned_state :: StateT -> StateT 
+cx_cloned_state :: SemState -> SemState 
 cx_cloned_state ψ = 
     let 
         ψ0 = ψ ⊗ ket [0]

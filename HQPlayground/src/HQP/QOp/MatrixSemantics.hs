@@ -52,44 +52,41 @@ instance SemanticsBackend MatrixSemantics where
   measure1 (_,_,[]) _ = error "No more random numbers. This never happens."
 
   {-| bra [v0,...,v_{n-1}] (where v_j is 0 or 1) is the adjoint state <v0 v1 ... v_{n-1}|. In the matrix representation, this is a row-vector in C^{2^n}, i.e. of dimension (1 >< 2^n). -}
-  ket []     = (1><1) [1]
-  ket (v':vs) = let 
-        v = v' :+ 0
-    in 
-        (2><1) [1-v,v] ⊗ (ket vs)
+  ket = ketM     
+  evalOp = evalOpM
+    
+evalOpM :: QOp -> CMat
+evalOpM op = case op of
+        Id n -> ident (2^n)
 
-  evalOp :: QOp -> CMat
-  evalOp op = case op of
-    Id n -> ident (2^n)
+        Phase q -> let theta = (realToFrac q * pi) :+ 0 
+                   in  scalar (exp (ii*theta))
 
-    Phase q -> let theta = (realToFrac q * pi) :+ 0 
-               in  scalar (exp (ii*theta))
-
-    I -> (2 >< 2) [1,0,
+        I -> (2 >< 2) [1,0,
                    0,1]
 
-    X -> (2 >< 2) [0,1,
-                   1,0]
+        X -> (2 >< 2) [0,1,
+                       1,0]
 
-    Y -> (2 >< 2) [-ii, 0,
-                    0, ii]
+        Y -> (2 >< 2) [-ii, 0,
+                        0, ii]
 
-    Z -> (2 >< 2) [1,0,
-                   0,-1]
+        Z -> (2 >< 2) [1,0,
+                       0,-1]
 
-    H -> let s = 1/sqrt 2
-         in  s * ((2><2) [1, 1,
-                         1,-1])
+        H -> let s = 1/sqrt 2
+             in  s * ((2><2) [1, 1,
+                             1,-1])
 
-    SX -> evalOp $ R X (1/2)
+        SX -> evalOpM $ R X (1/2)
 
-    R axis q -> 
-        let mat  = evalOp axis
-            theta = (realToFrac q * pi) :+ 0 -- Haskell won't multiply real and complex numbers
-        in
-            matFunc exp ( (-ii*theta/2) .* mat )
+        R axis q -> 
+            let mat  = evalOpM axis
+                theta = (realToFrac q * pi) :+ 0 -- Haskell won't multiply real and complex numbers
+            in
+                matFunc exp ( (-ii*theta/2) .* mat )
 
-    Permute ks -> let
+        Permute ks -> let
                         n = length ks
                         dims = 1 `shiftL` n
                         indices = [ (i, foldl (\acc (bit,pos) -> acc + (bit `shiftL` pos)) 0 (zip (toBits' n i) ks)) | i <- [0..dims-1] ]
@@ -97,21 +94,28 @@ instance SemanticsBackend MatrixSemantics where
                     in
                         assoc (dims,dims) (0 :+ 0) (zip indices values)
                                             
-    C op1          ->  let 
-                            mop = evalOp op1
+        C op1          ->  let 
+                            mop = evalOpM op1
                             mI  = ident (rows mop)
                         in
                             mI <+> mop -- |0><0| ⊗ I^n + |1><1| ⊗ op1
     
-    Tensor    op1 op2 -> (evalOp op1)  ⊗  (evalOp op2)
-    Compose   op1 op2 | (op_qubits op1 == op_qubits op2) -> (evalOp op1)  ∘  (evalOp op2)  
+        Tensor    op1 op2 -> (evalOpM op1)  ⊗  (evalOpM op2)
+        Compose   op1 op2 | (n_qubits op1 == n_qubits op2) -> (evalOpM op1)  ∘  (evalOpM op2)  
                       | otherwise -> error $ 
                        "\n\nDim-mismatch: " ++ showOp op1 ++ " ∘ " ++ showOp op2 ++ "\n"
-    DirectSum op1 op2 | (op_qubits op1 == op_qubits op2) -> (evalOp op1)  <+> (evalOp op2)  
+        DirectSum op1 op2 | (n_qubits op1 == n_qubits op2) -> (evalOpM op1)  <+> (evalOpM op2)  
                       | otherwise -> error $ 
                        "\n\nDim-mismatch: " ++ showOp op1 ++ "<+>" ++ showOp op2 ++ "\n"
-    Adjoint op1       -> adj $ evalOp op1
+        Adjoint op1       -> adj $ evalOpM op1
 
+ketM :: [Int] -> CMat
+ketM []    = (1><1) [1]
+ketM (v':vs) = 
+      let 
+          v = fromIntegral v' :+ 0 
+      in 
+          ((2><1) [1-v,v]) ⊗ (ketM vs)
 --------------------------------------------------------------------------------
 
 --  State contruction: An n-qubit state can be represented by a vector in C^{2^n} (we'll later see potentially more compact representations). 
@@ -147,6 +151,9 @@ instance HasDirectSum CMat where
                           [zeros (rows b) (cols a), b]]
 instance HasAdjoint CMat where
     adj = tr -- HMatrix confusingly defines conjugate transpose as 'tr' (standard trace notation)
+
+instance HasQubits CMat where
+    n_qubits op = ilog2 (rows op)
 
 instance Operator CMat
 
@@ -188,12 +195,12 @@ I ⨷ ... ⨷ I ⨷ P ⨷ I ⨷ ... ⨷ I
  \------------ n ------------/
 -}
 measureProjection :: Int -> Int -> Int -> CMat
-measureProjection n k v = let     
-        p = (2><2) [(1-v) :+ 0,      0,
-                    0,          v :+ 0]
+measureProjection n k v' = let     
+        v = fromIntegral v' :+ 0  :: ComplexT
+        p = (2><2) [(1-v), 0,
+                    0,     v] :: CMat
     in
-        evalOp(Id k) ⊗ p ⊗ evalOp (Id (n-k-1))
-
+        (evalOpM $ Id k) ⊗ p ⊗ (evalOpM $ Id (n-k-1))
 
 -- Auxiliary definitions -- move to internal module?
 tol :: RealT

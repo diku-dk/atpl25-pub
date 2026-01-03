@@ -5,32 +5,9 @@ import Data.List (sort)
 import qualified Data.Set as S
 
 
--- | Signature of an operator a: C^{2^m} -> C^{2^n} is (m,n) = (op_domain a, op_range a)
-op_qubits :: QOp -> Nat
-op_qubits op = case op of
-    Id n          -> n
-    Phase _       -> 0
-    R a _         -> op_qubits a
-    C a           -> 1 + op_qubits a
-    Tensor    a b -> op_qubits a + op_qubits b
-    DirectSum a _ -> 1 + op_qubits a -- Assume op_qubits a == op_qubits b is type checked
-    Compose   a _ -> op_qubits a     -- Assume op_qubits a == op_qubits b is type checked
-    Adjoint   a   -> op_qubits a
-    Permute   ks  -> length ks 
-    _             -> 1 -- 1-qubit gates
-
 op_dimension :: QOp -> Nat
-op_dimension op = 1 `shiftL` (op_qubits op)
+op_dimension op = 1 `shiftL` (n_qubits op)
 
-step_qubits :: Step -> Nat
-step_qubits step = case step of 
-  Unitary op -> op_qubits op
-  Measure ks      -> 1 + foldr max 0 ks
-  Initialize ks _ -> 1 + foldr max 0 ks
-
-           
-prog_qubits :: Program -> Nat
-prog_qubits program = maximum $ map step_qubits program
 
 -- | Support of an operator: the list of qubits it acts non-trivially on.
 op_support :: QOp -> S.Set Nat
@@ -45,7 +22,7 @@ op_support op = let
   R _ 0         -> S.empty
   R a _         -> op_support a
   C a           -> S.insert 0 ((op_support a) `shift` 1)
-  Tensor a b    -> (op_support a) `union` ((op_support b) `shift` (op_qubits a))
+  Tensor a b    -> (op_support a) `union` ((op_support b) `shift` (n_qubits a))
   DirectSum a b -> S.insert 0 ((op_support a `union` op_support b) `shift` 1)
   Compose (Permute ks) b -> permute_support ks (op_support b)
   Compose a (Permute ks) -> permute_support_inv ks (op_support a)
