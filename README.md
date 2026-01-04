@@ -125,7 +125,9 @@ ket   :: [Int] -> StateT                                              -- Build b
 Note that evalOp does not need to evaluate to a full representation of the operator, if your semantics backend data type does not easily allow that. It's totally fine to just build a lambda (i.e. delayed evaluation), so long as you can
 later apply it to a ```StateT``` using ```apply```.
 
-## RepeaterProtocol.hs: New application program for testing Clifford backends
+## New quantum programs in src/Programs/:
+
+1. ```RepeaterProtocol.hs```: New application program for testing Clifford backends
 
 In order to benchmark and test Stabilizer implementations, I've written a quantum communication program that can generate useful workloads consisting only of Clifford operations, and which can scale to arbitrarily large numbers of qubits and operations. 
 
@@ -135,6 +137,9 @@ The program implements the Repeater Protocol, which, given a sequence of qubits 
 
 ```exe/TestRepeater.hs``` is a test of multi-qubit repeater protocol and multi-qubit teleportation, transmitting a length-2^m message, using amplitudes of 0,1,2,...,2^m-1 (normalized) as a simple example. You can test it currently using the (very slow!) MatrixSemantics backend, and plug in your Stabilizer backend or ZX backend to verify correctness and benchmark.
 
+2. ```QuantumAdder.hs``` Example of quantum arithmetic using QFT. This shows how to use the basis kets as binary integers mod 2^n, and how to perform constant addition to all of them (mod 2^n, so addition becomes a permutation of the basis states), as well as how to add another qubit register to all 2^n basis kets (producing an m+n-qubit entangled state |x> ⊗ |y> ↦ |x> ⊗ |x+y mod 2^n>). This can be extended to define multipliation and further arithmetic operations.
+
+3. ```QFT.hs``, the Quantum Fourier Transform implementation, has been simplified. 
 
 ## HelperFunctions.hs and Simplify.hs: Helper functions for program transformations 
 
