@@ -8,23 +8,6 @@ import Programs.RepeaterProtocol
 import Data.List (partition)
 
 
--- | Extend a program to act on k additional qubits 
-{-
-extendprogram ::  Int -> Program -> Program  
-extendprogram new_n prog = map extendop prog
-  where
-    extendop (Unitary u) = let 
-        n = op_qubits u
-        d = new_n - n
-     in Unitary $ cleanop (u ⊗ Id d)
-    extendop (Measure ms) = Measure ms
-
-extendprogram_left d prog = map extendop prog
-  where
-    extendop (Unitary u)  = Unitary $ cleanop (Id d ⊗ u)
-    extendop (Measure ms) = Measure $ map (+d) ms
--}
-
 
 main :: IO()
 main = do    
@@ -50,7 +33,7 @@ main = do
         message' = ((2^m) >< 1) [c :+ 0 | c <- [0,1..2^m-1]] :: CMat         
         norm    = norm_2 message' :+ 0
         message = (1 / norm) .* message'  -- normalize the message state
-        --message = ket (replicate m 0)
+        --message = ket (replicate m 0)   -- <- if we want to look at the bell states un-mangled with the message.
         
         repeater_prog = multiqubitRepeater n source_qubits  chain_qubits target_qubits
         teleport_prog = multiqubitTeleport n message_qubits source_qubits target_qubits
