@@ -59,7 +59,7 @@
 
    ```haskell
       k <@ op    = Id k ⊗ op         -- place at qubit k
-         op @> l = op ⊗ Id l         -- extend to l additional qubits
+           op @> l = op ⊗ Id l         -- extend to l additional qubits
       k <@ op @> l = Id k ⊗ op Id l  -- (k+l+1)-qubit operator that acts on qubit k
    ```
  
