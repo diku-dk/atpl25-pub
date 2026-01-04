@@ -34,12 +34,6 @@ All operations are Clifford; all non-unitarity is explicit measurement.
 
 Long-form explanation is given at the end of this file, below the code.
 -}
--- The main function is:
--- | repeater L
---   1+2) Unitary U_pre  = (∏_{i=1}^{L-1} (H_{b_{i-1}} ∘ CX_{b_{i-1}→a_i}))
---                        ∘ (∏_{i=0}^{L-1} (CX_{a_i→b_i} ∘ H_{a_i}))
---   3) Measure   M      = [b_0..b_{L-2}] ++ [a_1..a_{L-1}]
---   4) Unitary   U_corr = ∏_{i=1}^{L-1} (CX_{a_i→t} ∘ CZ_{b_{i-1}→t})
 bellAt, bellTransform :: Int -> Int -> Int -> QOp
 bellCorrection :: Int -> Int -> Int -> Int -> QOp
 bellAt         n s t     = (cxAt n s t ) ∘ (hAt n s)
@@ -189,73 +183,6 @@ because X^(2c) = Z^(2b) = I.
 Thus a Bell measurement on (B,C), followed by controlled-Z from B and
 controlled-X from C, deterministically swaps entanglement:
 
-  |Φ+>_{AB} ⊗ |Φ+>_{CD}  →  |Φ+>_{AD}.
-
-
---------------------------------------------------------------------------------
-Detailed Description of the Repeater Protocol
---------------------------------------------------------------------------------
-
-Setup
------
-Fix a chain length L ≥ 1.
-
-For each link i = 0,…,L−1, we have two qubits:
-  a_i   -- left endpoint of link i
-  b_i   -- right endpoint of link i
-
-The endpoints of the chain are:
-  a_0           (left endpoint)
-  t := b_{L−1}  (right endpoint)
-
-All measurements are in the computational (Z) basis.
-
-Step 1: Fused preparation unitary U_pre
----------------------------------------
-This unitary performs two tasks simultaneously:
-
-  (1) Prepare a Bell pair on each link (a_i, b_i).
-  (2) Apply the standard pre-rotations needed to realize Bell measurements
-      on each intermediate pair (b_{i−1}, a_i).
-
-For each link i = 0,…,L−1, define
-  U_link^(i) := CX_{a_i → b_i} ∘ H_{a_i}
-
-For each intermediate node i = 1,…,L−1, define
-  U_swap^(i) := H_{b_{i−1}} ∘ CX_{b_{i−1} → a_i}
-
-The fused preparation unitary is
-  U_pre :=
-      ( ∏_{i=1}^{L−1} U_swap^(i) )
-    ∘ ( ∏_{i=0}^{L−1} U_link^(i) )
-
-This creates Bell pairs on all links and prepares all swap pairs
-for Bell measurement in a single Clifford unitary.
-
-
-Step 2: Measurements M
----------------------------
-Measure the 2(L−1) qubits { b_0,…,b_{L−2} } ∪ { a_1,…,a_{L−1} } in the Z basis.
-
-This is equivalent to performing Bell measurements on each pair (b_{i−1}, a_i),  i = 1,…,L−1,
-and produces classical outcome bits m_{b_{i−1}}, m_{a_i} ∈ {0,1}.
-After this step, all measured qubits are classical.
-
-
-Step 3: Correction unitary U_corr
----------------------------------------
-
-Because the measured qubits have collapsed to |0⟩ or |1⟩, Pauli corrections can be applied unitarily using them as controls.
-
-For each i = 1,…,L−1, define U_corr^(i) := CX_{a_i → t} ∘ CZ_{b_{i−1} → t}
-
-The fused correction unitary is U_corr := ∏_{i=1}^{L−1} U_corr^(i)
-
-Operationally, this applies the Pauli
-  X_t^{ ⊕_i m_{a_i} }  Z_t^{ ⊕_i m_{b_{i−1}} }
-to the endpoint t, but without any classical-side Pauli-frame bookkeeping.
-
-
 Net Effect
 ----------
 
@@ -265,11 +192,13 @@ Starting from |0⟩^{⊗ 2L}, the three-step program
 
 deterministically produces the Bell state
 
-  |Φ⁺⟩_{a_0 t} = (|00⟩ + |11⟩) / √2
+  |Φ⁺⟩_{s t} = (|00⟩ + |11⟩) / √2
 
-on the endpoints a_0 and t, with all intermediate qubits measured and discarded.
+on the endpoints s and t, with all intermediate qubits measured and discarded.
 
 Thus, the protocol transforms the chain of L short-range Bell pairs into one 
 long-range Bell pair using only Clifford operations and measurements.
+
+Multi-qubit set-up and teleportation is done by repeating the single-qubit repeater protocol.
 -}
 
