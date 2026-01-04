@@ -148,7 +148,8 @@ simplifyFixpoint :: Eq o => Int -> [o -> o] -> o -> o
 simplifyFixpoint n rewriterules op = fixpoint n (simplifyPass rewriterules) op  
 ```
 
-2. Use algebraic rules to lift composes to the top (compositions of tensor products) or push down (tensor products of compositions) instead of a mixed tree.
+2. Use algebraic rules to lift composes to the top (compositions of tensor products) or push down (tensor products of compositions) instead of a mixed tree. It can be quite useful to have operators in one of these forms when generating e.g. Stabilizer code.
+
 ```pushComposes :: QOp -> QOp```
 ```liftComposes :: QOp -> QOp```
 
