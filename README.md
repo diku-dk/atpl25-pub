@@ -41,7 +41,7 @@
 2. Replaced 'One' (0-qubit identity, neutral element for ⊗) by more general Phase θ (scalar multiplication by e^{iθπ}).
    One = Phase 0 is a 'pattern' rule instead of its own constructor. Pattern rules can still be used both as constructors and in pattern matching rules.
 
-   While the v2 QOp definition was complete (every n-qubit unitary could be specified), Phase θ is needed for many transformation rules in e.g. Stabilizer algebra and ZX algebra implementations.
+   While the v2 QOp definition was already complete (every n-qubit unitary could be specified), Phase θ is needed for many transformation rules in e.g. Stabilizer algebra and ZX algebra implementations.
 
    Note that while global phases are not measurable, a global phase e^{iθπ}A becomes relative when controlled:
 
@@ -51,10 +51,11 @@
     operators that act on specific qubits (instead of repeated I⊗I⊗ ⋯ ⊗I), and 2) to recognize on which qubits operators act nontrivially, and 3) avoids a lot of clutter in the QOp representations. This makes implementing ZX and Stabilizers easier, as well as programming quantum algorithms.
 
     Example:
-
+   ```haskell
     atQubit n k g = Id k ⊗ g ⊗ Id (n-k-1) -- Produces the n-qubit operator with 1-qubit gate g acting on qubit k.
-
-    Some syntactic shorthand for qubit placement have been added: 
+   ```
+   
+   Some syntactic shorthand for qubit placement have been added: 
 
    ```haskell
       k <@ op    = Id k ⊗ op         -- place at qubit k
