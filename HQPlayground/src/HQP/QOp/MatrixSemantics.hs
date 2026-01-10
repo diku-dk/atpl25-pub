@@ -165,6 +165,7 @@ instance HilbertSpace CMat where
     
     (.*) = scale
     (.+) a b = a+b
+    (.-) a b = a-b
 
     -- | inner a b is the usual dot product, with the adjoint coefficients complex conjugated
     inner a b = let 

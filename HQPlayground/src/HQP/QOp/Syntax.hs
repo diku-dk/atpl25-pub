@@ -74,6 +74,7 @@ class (Scalar v ~ Complex (Realnum v), Floating (Realnum v), HasTensorProduct v)
 
   (.*)  :: Scalar v -> v -> v -- Scalar-vector multiplication
   (.+)  :: v -> v -> v        -- Vector-vector addition
+  (.-)  :: v -> v -> v        -- Vector-vector subtraction
   
   inner     :: v -> v -> Scalar v -- Inner product 
   normalize :: v -> v
