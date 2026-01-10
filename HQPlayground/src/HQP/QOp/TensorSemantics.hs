@@ -25,6 +25,8 @@ import Data.Complex
 import HQP.QOp.Syntax          
 import HQP.QOp.HelperFunctions
 import HQP.PrettyPrint.PrettyOp
+import HQP.QOp.MatrixSemantics(CMat,CMatable(..))
+import qualified HQP.PrettyPrint.PrettyMatrix as PS
 import Data.Bits(shiftL,xor,testBit, setBit, clearBit)
 import Data.Array(accumArray,elems)
 --import qualified Torch as T
@@ -43,7 +45,8 @@ import Data.Massiv.Array
   )
 import Data.Massiv.Array.Unsafe (unsafeIndex)
 import qualified Data.Massiv.Array as A
-import           Numeric.LinearAlgebra (Matrix, (><))
+import           Numeric.LinearAlgebra (Matrix, (><),size)
+import qualified Numeric.LinearAlgebra as HMat
 import qualified Foreign.Storable as FFI
 type StateT   = Array U Ix2 ComplexT
 type WorkT    = Array D Ix2 ComplexT
@@ -128,7 +131,7 @@ type OpW = WorkT -> WorkT
 
 instance HasQubits StateT where
   n_qubits ψ =
-    case size ψ of
+    case A.size ψ of
       Sz2 d _ -> ilog2 d   -- matrix view [pow2 n, r]
 
 
@@ -555,8 +558,8 @@ measure1 :: (StateT, Outcomes, RNG) -> Int -> (StateT, Outcomes, RNG)
 measure1 (state, outcomes, (r:rng)) k = let
       Sz2 m batch = A.size state
       n       = ilog2 m
-      proj0 = measureProjection n batch k False
-      proj1 = measureProjection n batch k True
+      proj0 = measureProjection' n batch k False
+      proj1 = measureProjection' n batch k True
 
       s0 = proj0 state
       s1 = proj1 state
@@ -573,12 +576,18 @@ measure1 (state, outcomes, (r:rng)) k = let
           else
               (collapsed_state, outcome:outcomes, rng)
 
-measureProjection :: HasWork t => Int  -- Arity of operator in qubits
+measureProjection :: HasWork t => Int -- Arity of operator in qubits
+                               -> Int -- Qubit index to measure
+                               -> Int -- Measurement outcome (0 or 1)
+                                 -> (t -> t)
+measureProjection n k b = measureProjection' n 1 k (b /= 0)
+
+measureProjection' :: HasWork t => Int  -- Arity of operator in qubits
                                -> Int  -- Batch dimension
                                -> Int  -- Qubit index to measure
-                               -> Bool -- Measurement outcome (0 or 1)
+                               -> Bool -- Measurement outcome (False or True)
                                -> (t -> t)
-measureProjection n r k b = \psi ->
+measureProjection' n r k b = \psi ->
   let 
       bitPos     = n - 1 - k                 -- MSB-first: qubit 0 is top bit
       m = pow2 n
@@ -623,6 +632,12 @@ instance HilbertSpace WorkT where
     in if nrm < tol then ψ else ((1/nrm) :+ 0) .* ψ
 
     
+instance CMatable StateT where
+  toCMat = toHMatrix 
+  fromCMat mat =
+        let (m,n) = HMat.size mat
+            xs     = concat $ HMat.toLists mat
+        in make2 (m,n) $ \(i,j) -> xs !! (i*n + j)
 
 --------------------------------------------------------------------------------
 -- Dagger (structural)

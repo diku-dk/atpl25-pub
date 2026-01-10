@@ -84,6 +84,7 @@ class (Scalar v ~ Complex (Realnum v), Floating (Realnum v), HasTensorProduct v)
 
   
 
+
   
 class HasTensorProduct o where
   (⊗) :: o -> o -> o
@@ -112,8 +113,8 @@ instance Operator QOp
 type Outcomes = [Bool]     -- head = most recent
 type RNG      = [Double]   -- infinite steam in [0,1)
 
-infixr 8 ⊗, <.>
-infixr 7 ⊕, <+>
+infixr 8 ⊗, <.>, .*
+infixr 7 ⊕, <+>, .+, .-
 infixr 6 ∘, >:
 
 (@>) :: QOp -> Nat -> QOp

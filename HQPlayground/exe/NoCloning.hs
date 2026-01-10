@@ -1,11 +1,11 @@
 module Main where 
 
 import HQP.QOp
-import HQP.QOp.MatrixSemantics
+import HQP.QOp.TensorSemantics
 import HQP.PrettyPrint
 
 state1q :: ComplexT -> ComplexT -> StateT
-state1q a b = a .* ket [0] + b .* ket [1]
+state1q a b = (a .* ket [0]) .+  (b .* ket [1])
 
 {-|
   Clones the full state of a 1-qubit state |ψ> into a 2-qubit state |ψψ>
@@ -20,7 +20,7 @@ cx_cloned_state ψ =
         ψ0 = ψ ⊗ ket [0]
         cx = evalOp $ C X
     in
-        cx <> ψ0
+        apply cx ψ0
 
 
 main :: IO()
@@ -46,7 +46,7 @@ main = do
 
     -- let psi = sqrt(1/2) .* ket [0]  + sqrt(1/2) .* ket [1]
     --let psi = sqrt(1/4) .* ket [0]  + sqrt(3/4) .* ket [1]
-    let psi = sqrt(1/4) .* ket [0]  + sqrt(3/4) .* ket [1]
+    let psi = (sqrt(1/4) .* ket [0])  .+ (sqrt(3/4) .* ket [1])
     
     putStrLn $ "\n-- Can we clone |ψψ> = " ++ (showState psi) ++ "? --"    
 
@@ -62,11 +62,11 @@ main = do
     let p10    = mP 2 1 0 -- Effect of measuring second qubit to 0
     let p11    = mP 2 1 1 -- Effect of measuring second qubit to 1
 
-    let qpsi0 = p10 <> qpsipsi
-    let qpsi1 = p11 <> qpsipsi
+    let qpsi0 = apply p10 qpsipsi
+    let qpsi1 = apply p11 qpsipsi
 
-    let cpsi0 = p10 <> cpsipsi
-    let cpsi1 = p11 <> cpsipsi
+    let cpsi0 = apply p10 cpsipsi
+    let cpsi1 = apply p11 cpsipsi
 
     let qm0prob = inner qpsipsi qpsi0
     let qm1prob = inner qpsipsi qpsi1
@@ -85,15 +85,15 @@ main = do
     let (p00,p01) = (mP 2 0 0, mP 2 0 1)
     
     let (qpsi0n,cpsi0n) = (normalize qpsi0, normalize cpsi0)    
-    let qp00 = inner qpsi0n (p00 <> qpsi0n)
-    let cp00 = inner cpsi0n (p00 <> cpsi0n)
+    let qp00 = inner qpsi0n (apply p00 qpsi0n)
+    let cp00 = inner cpsi0n (apply p00 cpsi0n)
     
     putStrLn $ "\nProbability for measuring 0 on qubit 0 after measuring 0 on qubit 1\n" ++
             " - for   |ΨΨ>:  <ΨΨ|P0xP0|ΨΨ>         = " ++ (show qp00) ++ "\n" ++
             " - for CX|Ψ0>:  <Ψ0|CX^H P0 P0 CX|Ψ0> = " ++ (show cp00) ++ "\n"             
     
-    let qp01 = inner qpsi0n (p01 <> qpsi0n)
-    let cp01 = inner cpsi0n (p01 <> cpsi0n)
+    let qp01 = inner qpsi0n (apply p01 qpsi0n)
+    let cp01 = inner cpsi0n (apply p01 cpsi0n)
     
     putStrLn $ "\nProbability for measuring 1 on qubit 0 after measuring 0 on qubit 1\n" ++
             " - for   |ΨΨ>:  <ΨΨ|P0xP0|ΨΨ>         = " ++ (show qp01) ++ "\n" ++
@@ -108,7 +108,7 @@ main = do
 --             " - for   |ΨΨ>:  <ΨΨ|P0xP0|ΨΨ>         = " ++ (show qp10) ++ "\n" ++
 --             " - for CX|Ψ0>:  <Ψ0|CX^H P1 P0 CX|Ψ0> = " ++ (show cp10) ++ "\n"             
     
-    
+
 
 
         

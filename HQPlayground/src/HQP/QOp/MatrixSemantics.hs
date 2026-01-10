@@ -202,6 +202,15 @@ measureProjection n k v' = let
     in
         evalOp(Id k) ⊗ p ⊗ evalOp (Id (n-k-1))
 
+-- Automatic conversion to/from CMat for other types
+class CMatable w where
+    toCMat   :: w -> CMat
+    fromCMat :: CMat -> w
+
+instance CMatable CMat where
+    toCMat   = id
+    fromCMat = id
+
 
 -- Auxiliary definitions -- move to internal module?
 tol :: RealT

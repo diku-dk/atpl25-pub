@@ -32,6 +32,7 @@ common common-options
         GeneralizedNewtypeDeriving,
         OverloadedLists,
         DataKinds,
+        UndecidableInstances
 
 library core
     import:   warnings, common-options
