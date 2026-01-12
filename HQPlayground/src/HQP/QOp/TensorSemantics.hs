@@ -50,6 +50,7 @@ import qualified Numeric.LinearAlgebra as HMat
 import qualified Foreign.Storable as FFI
 type StateT   = Array U Ix2 ComplexT
 type WorkT    = Array D Ix2 ComplexT
+--type WorkT = StateT
 
 {-# INLINE index2 #-}
 {-# INLINE make2 #-}
@@ -100,26 +101,23 @@ instance HasDirectSum WorkT where
 instance HasDirectSum StateT where
   (⊕) a b = fromWork (toWork a ⊕ toWork b)
 
-make2  :: HasWork t => (Int,Int) -> ((Int,Int) -> ComplexT) -> t
-index2 :: HasWork t => t -> (Int,Int) -> ComplexT
+make2  :: (Int,Int) -> ((Int,Int) -> ComplexT) -> WorkT
+index2 :: WorkT -> (Int,Int) -> ComplexT
 
 -- | view (reshape)
-view2        :: HasWork t => (Int,Int) -> t -> t
-splitFront   :: HasWork t => Int -> Int -> t -> (t,t)
-stackFront   :: HasWork t => Int -> Int -> t -> t -> t
-backpermute2 :: HasWork t
-             => (Int,Int)                -- (m,n), the shape of the array
+view2        :: (Int,Int) -> WorkT -> WorkT
+splitFront   :: Int -> Int -> WorkT -> (WorkT,WorkT)
+stackFront   :: Int -> Int -> WorkT -> WorkT -> WorkT
+backpermute2 :: 
+                (Int,Int)                -- (m,n), the shape of the array
              -> ((Int,Int) -> (Int,Int)) -- f: output index -> input index
-             -> t -> t
+             -> WorkT -> WorkT
 
 
 
 -- | Transformer primitives
-mapW :: HasWork t => (ComplexT -> ComplexT) -> t -> t
-zipW :: HasWork t => (ComplexT -> ComplexT -> ComplexT) -> t -> t -> t
-
-
-
+mapW :: (ComplexT -> ComplexT) -> WorkT -> WorkT
+zipW :: (ComplexT -> ComplexT -> ComplexT) -> WorkT -> WorkT -> WorkT
 
 --------------------------------------------------------------------------------
 -- Backend-wide conventions
@@ -165,7 +163,7 @@ toHMatrix arr =
 {-| Massiv implementation with delayed work type and manifest external type -}
 mapW f = fromWork . A.map f . toWork
 zipW f a b = fromWork $ A.zipWith f (toWork a) (toWork b)
-make2 (m,n) f  = fromWork $ A.makeArray A.Par (Sz2 m n) (\(i :. j) -> f (i,j))
+make2 (m,n) f  = fromWork $ A.makeArray A.Seq (Sz2 m n) (\(i :. j) -> f (i,j))
 index2 a (i,j) = unsafeIndex (toWork a) (i :. j)
 view2 (m,n)    = fromWork . A.resize' (Sz2 m n) . toWork
 
@@ -174,26 +172,25 @@ splitFront k r a =
       w  = view2 (2*m, r) a
       a0 = A.extract' (0 :. 0) (Sz2 m r) (toWork w)
       a1 = A.extract' (m :. 0) (Sz2 m r) (toWork w)
-  in (fromWork (A.delay a0), fromWork (A.delay a1))
+  in (a0, a1)
 
 stackFront k r ψ0 ψ1 =
   let m  = pow2 k
       a0 = view2 (m,r) ψ0
       a1 = view2 (m,r) ψ1
-  in fromWork $ A.makeArray A.Par (Sz2 (2*m) r) $ \(i :. j) ->
+  in A.makeArray A.Seq (Sz2 (2*m) r) $ \(i :. j) ->
        if i < m
-         then unsafeIndex (toWork a0) (i :. j)
-         else unsafeIndex (toWork a1) ((i-m) :. j)
+         then unsafeIndex a0 (i :. j)
+         else unsafeIndex a1 ((i-m) :. j)
 
 
 --         then a0 A.! (i :. j)
 --         else a1 A.! ((i - m) :. j)
 
 backpermute2 (m,n) f =
-  fromWork
-  . A.backpermute' (Sz2 m n)
+   A.backpermute' (Sz2 m n)
       (\(i :. j) -> let (i',j') = f (i,j) in i' :. j')
-  . toWork
+
 
 --------------------------------------------------------------------------------
 -- Construct a basis state 
@@ -414,7 +411,10 @@ onSelector::
   -> WorkT   -- output state
 onSelector f0 f1 k r ψ =
   let (ψ0, ψ1) = splitFront k r ψ
-  in  stackFront k r (f0 ψ0) (f1 ψ1)
+      (u0,u1) = (A.computeAs A.U  $ f0 ψ0, A.computeAs A.U  $ f1 ψ1)
+  in  
+   stackFront k r (toWork u0) (toWork u1)
+   --toWork . A.computeAs A.U  $ A.append' (A.Dim 1) u0 u1
 
 
 --------------------------------------------------------------------------------
@@ -593,7 +593,7 @@ measureProjection' n r k b = \psi ->
       m = pow2 n
       psiw = toWork psi
   in
-    make2 (m, r) $ \(i, j) ->
+    fromWork $ make2 (m, r) $ \(i, j) ->
         if (testBit i bitPos) `xor` b then 0 else unsafeIndex psiw (i :. j)
 
 
@@ -601,9 +601,9 @@ instance HilbertSpace StateT where
   type Realnum StateT = Double
   type Scalar  StateT = ComplexT
 
-  (.*) c ψ = mapW (c*) ψ
-  (.+) ψ φ = zipW (+) ψ φ
-  (.-) ψ φ = zipW (-) ψ φ
+  (.*) c ψ = fromWork $ mapW (c*) (toWork ψ)
+  (.+) ψ φ = fromWork $ zipW (+) (toWork ψ) (toWork φ)
+  (.-) ψ φ = fromWork $ zipW (-) (toWork ψ) (toWork φ)
 
   inner ψ φ =
     let wψ = toWork ψ
@@ -637,7 +637,7 @@ instance CMatable StateT where
   fromCMat mat =
         let (m,n) = HMat.size mat
             xs     = concat $ HMat.toLists mat
-        in make2 (m,n) $ \(i,j) -> xs !! (i*n + j)
+        in fromWork $ make2 (m,n) $ \(i,j) -> xs !! (i*n + j)
 
 --------------------------------------------------------------------------------
 -- Dagger (structural)
