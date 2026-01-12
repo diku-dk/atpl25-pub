@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 
-module HQP.QOp.TensorSemantics
+module HQP.QOp.StatevectorSemantics
  {-| ( StateT
   , OpT(..)
   , apply
@@ -414,7 +414,7 @@ onSelector f0 f1 k r ψ =
       (u0,u1) = (A.computeAs A.U  $ f0 ψ0, A.computeAs A.U  $ f1 ψ1)
   in  
    stackFront k r (toWork u0) (toWork u1)
-   --toWork . A.computeAs A.U  $ A.append' (A.Dim 1) u0 u1
+   --toWork . A.computeAs A.U  $ A.append' (A.Dim 2) u0 u1
 
 
 --------------------------------------------------------------------------------

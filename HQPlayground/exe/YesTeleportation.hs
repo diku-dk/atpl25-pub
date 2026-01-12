@@ -2,7 +2,7 @@ module Main where
 
 import HQP
 import HQP.QOp.MatrixSemantics
---import HQP.QOp.TensorSemantics
+--import HQP.QOp.StatevectorSemantics
 import HQP.PrettyPrint
 import System.Random(mkStdGen, randoms)
 -- import Data.List(intercalate)

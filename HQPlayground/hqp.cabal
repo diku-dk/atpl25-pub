@@ -46,7 +46,7 @@ library core
       HQP.QOp.HelperFunctions
       -- HQP Semantics backend implementations:
       HQP.QOp.MatrixSemantics     
-      HQP.QOp.TensorSemantics
+      HQP.QOp.StatevectorSemantics
       HQP.QOp.StabilizerSemantics 
       -- Pretty-printing HQP programs and representations:
       HQP.PrettyPrint
