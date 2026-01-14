@@ -74,6 +74,7 @@ class (Scalar v ~ Complex (Realnum v), Floating (Realnum v), HasTensorProduct v)
 
   (.*)  :: Scalar v -> v -> v -- Scalar-vector multiplication
   (.+)  :: v -> v -> v        -- Vector-vector addition
+  (.-)  :: v -> v -> v        -- Vector-vector subtraction
   
   inner     :: v -> v -> Scalar v -- Inner product 
   normalize :: v -> v
@@ -82,6 +83,7 @@ class (Scalar v ~ Complex (Realnum v), Floating (Realnum v), HasTensorProduct v)
   norm x = sqrt(realPart $ inner x x)  
 
   
+
 
   
 class HasTensorProduct o where
@@ -111,8 +113,8 @@ instance Operator QOp
 type Outcomes = [Bool]     -- head = most recent
 type RNG      = [Double]   -- infinite steam in [0,1)
 
-infixr 8 ⊗, <.>
-infixr 7 ⊕, <+>
+infixr 8 ⊗, <.>, .*
+infixr 7 ⊕, <+>, .+, .-
 infixr 6 ∘, >:
 
 (@>) :: QOp -> Nat -> QOp

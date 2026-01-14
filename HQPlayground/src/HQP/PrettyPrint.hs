@@ -3,6 +3,6 @@ module HQP.PrettyPrint(
     module HQP.PrettyPrint.PrettyOp
 ) 
 where
-import HQP.PrettyPrint.PrettyMatrix
-import HQP.PrettyPrint.PrettyOp
+import HQP.PrettyPrint.PrettyMatrix 
+import HQP.PrettyPrint.PrettyOp     
 

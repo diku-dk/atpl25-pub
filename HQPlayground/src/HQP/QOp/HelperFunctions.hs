@@ -56,9 +56,24 @@ toBits' n k = let
   in
     (replicate (n-m) 0) ++ bits
 
+-- | Infinite list of powers of two, constructed with O(1) time per element
+powersOfTwo :: [Nat]
+powersOfTwo = iterate (*2) 1
+
+dotlists :: Num a => [a] -> [a] -> a
+dotlists xs ys = sum $ zipWith (*) xs ys
+
+bitIndexMSB, bitIndexLSB :: [Int] -> Nat
+bitIndexMSB ks = dotlists (reverse ks) powersOfTwo
+bitIndexLSB ks = dotlists ks powersOfTwo
+
+
 -- | ilog2 m = floor (log2 m) for m >= 0
 ilog2 :: (FiniteBits a, Integral a) => a -> Nat
 ilog2 m = finiteBitSize m - countLeadingZeros m - 1
+
+pow2 :: Nat -> Nat
+pow2 n = 1 `shiftL` n
 
 evenOdd :: [a] -> ([a],[a])
 evenOdd [] = ([],[])

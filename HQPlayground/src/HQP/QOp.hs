@@ -4,7 +4,7 @@ module HQP.QOp(
     module HQP.QOp.HelperFunctions,
   -- re-export the *module names* for users to import qualified if they want semantics:
     module HQP.QOp.MatrixSemantics,     -- exported for convenience, see usage below
-    --module HQP.QOp.TensorSemantics,
+    --module HQP.QOp.StatevectorSemantics,
     module HQP.QOp.StabilizerSemantics
   ) where
 

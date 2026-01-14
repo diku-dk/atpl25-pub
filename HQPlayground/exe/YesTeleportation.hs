@@ -2,6 +2,8 @@ module Main where
 
 import HQP
 import HQP.QOp.MatrixSemantics
+--import HQP.QOp.StatevectorSemantics
+import HQP.PrettyPrint
 import System.Random(mkStdGen, randoms)
 -- import Data.List(intercalate)
 
@@ -23,7 +25,7 @@ teleprog = let
 
 teleport :: StateT -> RNG -> (StateT, Outcomes,RNG)
 teleport psi rng  = let
-        bell     = sqrt(1/2) .* (ket [0,0] + ket [1,1])
+        bell     = sqrt(1/2) .* (ket [0,0] .+ ket [1,1])
         psi_bell = psi ⊗ bell
     in
         evalProg teleprog psi_bell rng
@@ -36,8 +38,8 @@ main = do
     --let rng0 = [0,0,0] -- (always measure 0)
     -- let rng0 = [0,1,0] -- (First meausure 0, then measure 1)
     
-    let psi = sqrt(1/3) .* ket [0] + sqrt(2/3) .* ket [1]
-        bell     = sqrt(1/2)*(ket [0,0] + ket [1,1])
+    let psi = sqrt(1/3) .* ket [0] .+ sqrt(2/3) .* ket [1]
+        bell     = sqrt(1/2) .* (ket [0,0] .+ ket [1,1])
         psi_bell = psi ⊗ bell
 
     putStr $ "\nTeleport program:\n" ++ showProgram teleprog ++ "\n\n"

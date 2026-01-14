@@ -1,12 +1,10 @@
 module HQP.PrettyPrint.PrettyMatrix where
 
 import HQP.QOp.Syntax(RealT,ComplexT)
-import HQP.QOp.MatrixSemantics(CMat,RMat, sparseMat)
+import HQP.QOp.MatrixSemantics(CMat,RMat, sparseMat,CMatable(..))
 import HQP.QOp.HelperFunctions(toBits', ilog2)
 import Numeric.LinearAlgebra
 import Data.List (transpose, intercalate)
-
-
 
 -- ----- tolerances / helpers -----
 tol :: RealT
@@ -42,10 +40,10 @@ showR x =
         then show r
         else show x
 
-showState :: CMat -> String
+showState :: (CMatable t) => t -> String
 showState mat = 
     let
-        ((m,n),nonzeros) = sparseMat mat
+        ((m,n),nonzeros) = sparseMat (toCMat mat)
         (logm,logn) = (ilog2 m, ilog2 n)
     in
         case (m,n) of 
@@ -137,9 +135,10 @@ emit ms matLines =
     _                        -> matLines
 
 -- ----- top-level pretty printer -----
-showCMat :: CMat -> String
-showCMat mc =
-  let mr = cmap realPart mc
+showCMat :: CMatable t  => t -> String
+showCMat mc' =
+  let mc = toCMat mc'
+      mr = cmap realPart mc
       mi = cmap imagPart mc
       rr = analyze mr
       ri = analyze mi
@@ -167,6 +166,6 @@ showCMat mc =
           (False, False) -> realLines ++ [""] ++ imagLines
   in unlines out
 
-printM, printS :: CMat -> IO()
+printM, printS :: (CMatable t) => t -> IO()
 printM = putStrLn . showCMat
 printS = putStrLn . showState

@@ -165,6 +165,7 @@ instance HilbertSpace CMat where
     
     (.*) = scale
     (.+) a b = a+b
+    (.-) a b = a-b
 
     -- | inner a b is the usual dot product, with the adjoint coefficients complex conjugated
     inner a b = let 
@@ -200,6 +201,15 @@ measureProjection n k v' = let
                     0,  v]
     in
         evalOp(Id k) ⊗ p ⊗ evalOp (Id (n-k-1))
+
+-- Automatic conversion to/from CMat for other types
+class CMatable w where
+    toCMat   :: w -> CMat
+    fromCMat :: CMat -> w
+
+instance CMatable CMat where
+    toCMat   = id
+    fromCMat = id
 
 
 -- Auxiliary definitions -- move to internal module?
