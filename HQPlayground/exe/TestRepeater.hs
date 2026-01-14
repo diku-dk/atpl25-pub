@@ -2,7 +2,9 @@ module Main where
 
 import HQP
 import HQP.QOp.StatevectorSemantics 
-import HQP.QOp.MatrixSemantics(CMatable(..))
+import HQP.QOp.MatrixSemantics(CMat, CMatable(..))
+--import HQP.QOp.MatrixSemantics
+--import HQP.QOp.StateHmatrixSemantics 
 import System.Random(mkStdGen, randoms)
 import Numeric.LinearAlgebra
 import Programs.RepeaterProtocol
@@ -15,8 +17,8 @@ main = do
     let rng0 = randoms (mkStdGen 42) :: [Double]    
     -- let rng0 = [0.9,0.9..]
 
-    let m = 3  -- number of message qubits to teleport
-        l = 2  -- number of links between source and target nodes
+    let m = 2  -- number of message qubits to teleport
+        l = 6  -- number of links between source and target nodes
         n = 3*m+2*l
     
     let message_qubits =                [0..m-1] -- m message qubits
