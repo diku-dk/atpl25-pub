@@ -32,7 +32,7 @@ import Data.Array(accumArray,elems)
 --import qualified Torch as T
 --import qualified Torch.Functional as F
 --import qualified Torch.Tensor as TT
-import Data.Bits (testBit, setBit)
+import Data.Bits (testBit, setBit, clearBit)
 import Data.List (foldl')
 import Data.Massiv.Array
   ( Array, Comp(Seq),Ix1
@@ -140,16 +140,7 @@ evalProg :: Program -> StateT -> RNG -> (StateT, Outcomes, RNG)
 apply :: OpT -> StateT -> StateT
 apply f psi = f psi
 
---------------------------------------------------------------------------------
--- Pretty infix ops
---------------------------------------------------------------------------------
-
-infixl 6 .+., .-.
-infixl 7 .*.
-
 --- BACKEND-SPECIFIC IMPLEMENTATION HERE - MOVE TO BACKEND FILE LATER ---
-
-
 
 -- | Convert a Massiv 2D array to an hmatrix Matrix.
 --   The array is assumed to be fully defined (no ⊥).
@@ -184,9 +175,6 @@ stackFront k r ψ0 ψ1 =
          else unsafeIndex a1 ((i-m) :. j)
 
 
---         then a0 A.! (i :. j)
---         else a1 A.! ((i - m) :. j)
-
 backpermute2 (m,n) f =
    A.backpermute' (Sz2 m n)
       (\(i :. j) -> let (i',j') = f (i,j) in i' :. j')
@@ -210,67 +198,21 @@ ket = fromWork . ketW
 --------------------------------------------------------------------------------
 -- permuteLocal on row-index bits (delayed)
 --------------------------------------------------------------------------------
+permuteLocal :: [Int] -> Int -> Int -> WorkT -> WorkT
+permuteLocal ks p r psi =
+  let n      = pow2 p
+      inv    = invertPerm ks
+      -- bit position in integer index for qubit i (MSB-first)
+      bitPos i = p - 1 - i
 
+      -- y -> x = π^{-1} y : x_i = y_{inv[i]}
+      preimageRow y =
+        let get i = testBit y (bitPos (inv !! i))
+            put acc i = if get i then setBit acc (bitPos i) else clearBit acc (bitPos i)
+        in foldl put 0 [0..(p-1)]
 
+  in backpermute2 (n,r) (\(y,j) -> (preimageRow y, j)) (view2 (n,r) psi)
 
--- | permBits ks x = Σ_p bit(x,p) · pow2 {ks(p)}.
-permBits :: [Int] -> Int -> Int
-permBits ks x =
-  foldl' (\acc (p,q) -> if testBit x p then setBit acc q else acc) 0 (zip [0..] ks)
-
-
---------------------------------------------------------------------------------
--- Scalar mul / add / sub (fusible)
---------------------------------------------------------------------------------
-(.*.) :: ComplexT -> WorkT -> WorkT
-(.*.) c = mapW (c *)             -- delayed map fuses
-
-(.+.) :: WorkT -> WorkT -> WorkT
-(.+.) = zipW (+)
-
-(.-.) :: WorkT -> WorkT -> WorkT
-(.-.) = zipW (-)
---------------------------------------------------------------------------------
--- 1-qubit atoms on the *frontmost* qubit (direct tensor ops, no matmul)
---------------------------------------------------------------------------------
-
--- Each of these acts on Ψ : ℂ^{pow2 k × B} by exposing Ψ as ℂ^{2 × pow2 (k-1) × B}
--- (front qubit axis explicit), applying the 2×2 rule along that axis, and packing back.
-
--- | applyX1 implements (X ⊗ Id (k-1)) on k qubits.
--- Action on basis:
---   X|0⟩ = |1⟩,  X|1⟩ = |0⟩
--- so it swaps the two slices of the front axis:
---   Ψ'_{0,r,β} = Ψ_{1,r,β},  Ψ'_{1,r,β} = Ψ_{0,r,β}.
-
--- | applyZ1 implements (Z ⊗ Id (k-1)) on k qubits.
--- Action on basis:
---   Z|0⟩ = |0⟩,  Z|1⟩ = -|1⟩
--- hence:
---   Ψ'_{0,r,β} = Ψ_{0,r,β},  Ψ'_{1,r,β} = -Ψ_{1,r,β}.
-
-
--- | applyY1 implements (Y ⊗ Id (k-1)) on k qubits.
--- Action on basis:
---   Y|0⟩ =  i|1⟩,   Y|1⟩ = -i|0⟩
--- hence:
---   Ψ'_{0,r,β} = -i Ψ_{1,r,β}
---   Ψ'_{1,r,β} =  i Ψ_{0,r,β}.
-
-
--- | applyH1 implements (H ⊗ Id (k-1)) on k qubits.
--- Action on basis:
---   H|0⟩ = (|0⟩+|1⟩)/√2
---   H|1⟩ = (|0⟩-|1⟩)/√2
--- hence:
---   Ψ'_{0,r,β} = (Ψ_{0,r,β} + Ψ_{1,r,β})/√2
---   Ψ'_{1,r,β} = (Ψ_{0,r,β} - Ψ_{1,r,β})/√2.
-
--- Assumed to be provided by the backend module:
---   splitFront :: Int -> Int -> StateT -> (StateT, StateT)
---   stackFront :: Int -> Int -> StateT -> StateT -> StateT
-
--- | (X ⊗ Id) acting on the frontmost qubit
 
 
 
@@ -295,72 +237,10 @@ onLeftBlock kA kB r f psi =
 
     Ψ ↦ [[(Id kA) ⊗ B Ψ]] 
 
-  analogously to onLeftBlock.
+  analogously to onLeftBlock, by reshaping, swapping the left and right blocks,
+  applying B on the left block, and swapping back.
+  TODO: Rewrite in in term os onLeftBlock.
 -}
--- Apply (Id kA ⊗ B) to a state in matrix view [2^(kA+kB), r],
--- where B acts on kB qubits and expects input shape [2^kB, 2^kA*r].
--- Assumed:
---   newtype OpT = OpT { runOpT :: WorkT -> WorkT }
---   view2       :: (Int,Int) -> WorkT -> WorkT
---   backpermute2:: (Int,Int) -> ((Int,Int)->(Int,Int)) -> WorkT -> WorkT
---   pow2        :: Int -> Int
-applyX1, applyY1, applyZ1, applyH1, applySX1
-  :: Int -> Int -> WorkT -> WorkT
-
-applyX1 k r psi =
-  let n = pow2 k
-      m = pow2 (k-1)
-      a = view2 (n,r) psi
-  in make2 (n,r) $ \(i,j) ->
-       if i < m then index2 a (i+m, j)
-                else index2 a (i-m, j)
-
-applyZ1 k r psi =
-  let n = pow2 k
-      m = pow2 (k-1)
-      a = view2 (n,r) psi
-  in make2 (n,r) $ \(i,j) ->
-       let s = if i < m then 1:+0 else (-1):+0
-       in s * index2 a (i,j)
-
-applyY1 k r psi =
-  let n  = pow2 k
-      m  = pow2 (k-1)
-      a  = view2 (n,r) psi
-      iC = 0:+1
-      mi = 0:+(-1)
-  in make2 (n,r) $ \(i,j) ->
-       if i < m then mi * index2 a (i+m, j)   -- |0> <- -i |1>
-                else iC * index2 a (i-m, j)   -- |1> <-  i |0>
-
-applyH1 k r psi =
-  let n = pow2 k
-      m = pow2 (k-1)
-      a = view2 (n,r) psi
-      s = (1 / sqrt 2) :+ 0
-  in make2 (n,r) $ \(i,j) ->
-       let i0 = if i < m then i else i-m
-           a0 = index2 a (i0,   j)
-           a1 = index2 a (i0+m, j)
-       in if i < m then s*(a0 + a1) else s*(a0 - a1)
-
-applySX1 k r psi =
-  let
-      m  = pow2 (k-1)
-      a  = view2 (2*m,r) psi
-      h  = 0.5 :+ 0
-      p  = 1   :+ 1     -- (1+i)
-      q  = 1   :+ (-1)  -- (1-i)
-  in make2 (2*m,r) $ \(i,j) ->
-       let i0 = if i < m then i else i - m
-           a0 = index2 a (i0,   j)
-           a1 = index2 a (i0+m, j)
-           out0 = h * (p*a0 + q*a1)
-           out1 = h * (q*a0 + p*a1)
-       in if i < m then out0 else out1
-
-
-
 onRightBlock
   ::
      Int -> Int -> Int                             -- kA kB r
@@ -389,19 +269,112 @@ onRightBlock kA kB r bop = \psi ->
       outS  = view2 (ab, r) outSM
   in  backpermute2 (ab, r) fromSwapped outS
 
-{-| onSelector k r f0 f1 implements branching on a selector qubit:
--- given f0,f1 acting on k-qubit states, produce an endomorphism on (k+1) qubits:
---
---   |0⟩⊗ψ  ↦  |0⟩⊗f0(ψ)
---   |1⟩⊗ψ  ↦  |1⟩⊗f1(ψ)
---
--- i.e. the block-diagonal operatora
---   |0⟩⟨0| ⊗ A0  +  |1⟩⟨1| ⊗ A1
--- where A0,A1 are the operators denoted by f0,f1.
---
--- Special case: controlled U is (Id k) ⊕ U, i.e. f0 = Id, f1 = U.
--}
 
+--------------------------------------------------------------------------------
+-- 1-qubit atoms on the frontmost qubit 
+--------------------------------------------------------------------------------
+-- Each of these acts on Ψ : ℂ^{2^k × r} by viewing Ψ as ℂ^{2 × 2^(k-1) × r}
+-- (front qubit axis explicit), applying the 2×2 rule along that axis, and 
+-- restoring the original view.
+applyX1, applyY1, applyZ1, applyH1, applySX1
+  :: Int -> Int -> WorkT -> WorkT
+
+{-| applyX1 implements (X ⊗ Id (k-1)) on k qubits.
+    Action on basis: X|0⟩ = |1⟩,  X|1⟩ = |0⟩
+    so it swaps the two slices of the front axis:
+    Ψ'_{0,j,β} = Ψ_{1,j,β},  Ψ'_{1,j,β} = Ψ_{0,j,β}. -}
+applyX1 k r psi =
+  let n = pow2 k
+      m = pow2 (k-1)
+      a = view2 (n,r) psi
+  in make2 (n,r) $ \(i,j) ->
+       if i < m then index2 a (i+m, j)
+                else index2 a (i-m, j)
+
+{-| applyZ1 implements (Z ⊗ Id (k-1)) on k qubits.
+    Action on basis:  Z|0⟩ = |0⟩,  Z|1⟩ = -|1⟩
+    hence:  Ψ'_{0,j,β} = Ψ_{0,j,β},  Ψ'_{1,j,β} = -Ψ_{1,j,β}. -}
+applyZ1 k r psi =
+  let n = pow2 k
+      m = pow2 (k-1)
+      a = view2 (n,r) psi
+  in make2 (n,r) $ \(i,j) ->
+       let s = if i < m then 1:+0 else (-1):+0
+       in s * index2 a (i,j)
+
+{-| applyY1 implements (Y ⊗ Id (k-1)) on k qubits.
+   Action on basis:
+     Y|0⟩ =  i|1⟩,   Y|1⟩ = -i|0⟩
+   hence:
+     Ψ'_{0,j,β} = -i Ψ_{1,j,β}
+     Ψ'_{1,j,β} =  i Ψ_{0,j,β}. -}
+applyY1 k r psi =
+  let n  = pow2 k
+      m  = pow2 (k-1)
+      a  = view2 (n,r) psi
+      iC = 0:+1
+      mi = 0:+(-1)
+  in make2 (n,r) $ \(i,j) ->
+       if i < m then mi * index2 a (i+m, j)   -- |0> <- -i |1>
+                else iC * index2 a (i-m, j)   -- |1> <-  i |0>
+
+{-| applyH1 implements (H ⊗ Id (k-1)) on k qubits.
+   Action on basis:
+     H|0⟩ = (|0⟩+|1⟩)/√2
+     H|1⟩ = (|0⟩-|1⟩)/√2
+   hence:
+     Ψ'_{0,j,β} = 1/√2*(Ψ_{0,j,β} + Ψ_{1,j,β})
+     Ψ'_{1,j,β} = 1/√2*(Ψ_{0,j,β} - Ψ_{1,j,β}) -}
+applyH1 k r psi =
+  let m = pow2 (k-1)         -- k qubits -> m = 2^(k-1) indices per half
+      a = view2 (2*m,r) psi  -- Apply to first k qubits
+      s = (1 / sqrt 2) :+ 0
+  in make2 (2*m,r) $ \(i,j) ->
+      let i0 = if i < m then i else i-m
+          a0 = index2 a (i0,   j) -- |0> component of first qubit
+          a1 = index2 a (i0+m, j) -- |1> component of first qubit
+      in if i < m then 
+        s*(a0 + a1)  -- H|0⟩ = (|0⟩+|1⟩)/√2
+      else 
+        s*(a0 - a1)  -- H|1⟩ = (|0⟩-|1⟩)/√2
+
+{-| applySX1 implements (SX ⊗ Id (k-1)) on k qubits.
+   Action on basis:
+     SX|0⟩ = ( (1+i)|0> + (1-i)|1> ) /2
+     SX|1⟩ = ( (1-i)|0> + (1+i)|1> ) /2
+-}
+applySX1 k r psi =
+  let
+      m  = pow2 (k-1)
+      a  = view2 (2*m,r) psi
+      h  = 0.5 :+ 0
+      (p,q)  = (1:+1, 1:+(-1))  -- (1+i), (1-i)
+  in make2 (2*m,r) $ \(i,j) ->
+      let i0 = if i < m then i else i - m
+          a0 = index2 a (i0,   j)
+          a1 = index2 a (i0+m, j)
+      in if i < m then 
+          h * (p*a0 + q*a1)
+      else 
+          h * (q*a0 + p*a1)
+
+
+
+{-| onSelector k r f0 f1 implements direct sum of two operators acting on k qubits,
+  producing an operator on (k+1) qubits by selecting between them based on the
+  frontmost qubit:
+
+  onSelector f0 f1 k r ψ = [[(A0 ⊕ A1) ψ]] where [[A0]] = f0 and [[A1]] = f1.
+
+     |0⟩⊗ψ  ↦  |0⟩⊗f0(ψ)
+     |1⟩⊗ψ  ↦  |1⟩⊗f1(ψ)
+
+   i.e. the block-diagonal operator
+     |0⟩⟨0| ⊗ A0  +  |1⟩⟨1| ⊗ A1
+   acting on ψ.
+
+   Special case: controlled U is (Id k) ⊕ U, i.e. f0 = Id, f1 = U.
+-}
 onSelector::
      (WorkT -> WorkT)   -- f0 : action when selector = 0
   -> (WorkT -> WorkT)   -- f1 : action when selector = 1
@@ -414,7 +387,6 @@ onSelector f0 f1 k r ψ =
       (u0,u1) = (A.computeAs A.U  $ f0 ψ0, A.computeAs A.U  $ f1 ψ1)
   in  
    stackFront k r (toWork u0) (toWork u1)
-   --toWork . A.computeAs A.U  $ A.append' (A.Dim 2) u0 u1
 
 
 --------------------------------------------------------------------------------
@@ -424,7 +396,7 @@ onSelector f0 f1 k r ψ =
 -- Apply a Pauli product P (up to global phase) to a matrix-view Psi:[pow2 k,r].
 -- Returns (globalPhase, opT) where endomorphism is the actual action on Psi.
 --
--- Allowed constructors for P (recommended):
+-- Allowed constructors for P:
 --   Id, Phase, X,Y,Z, Permute, Tensor, Compose, Adjoint
 -- (No H, no DirectSum/C, no R).
 pauliOp :: QOp -- Pauli product
@@ -441,7 +413,7 @@ pauliOp op k r = go op
       Y          -> (1:+0, applyY1 k r)
       Z          -> (1:+0, applyZ1 k r)
 
-      --Permute ks -> (1:+0, OpT (permuteLocal ks k r))
+      Permute ks -> (1:+0, permuteLocal ks k r)
 
       Compose a b ->
         let (ϕA, opA) = go a
@@ -485,14 +457,14 @@ evalOpMat op k r = go op
   where
     go = \case
       Id _       -> id
-      Phase q    -> (exp( 0:+ (pi * fromRational q)) .*. )
+      Phase q    -> (exp( 0:+ (pi * fromRational q)) .* )
 
-      X          -> (applyX1 k r)
-      Y          -> (applyY1 k r)
-      Z          -> (applyZ1 k r)
-      H          -> (applyH1 k r)
-      SX         -> (applySX1 k r)
-      --Permute ks -> OpT (permuteLocal ks k r)
+      X          -> applyX1 k r
+      Y          -> applyY1 k r
+      Z          -> applyZ1 k r
+      H          -> applyH1 k r
+      SX         -> applySX1 k r
+      Permute ks -> permuteLocal ks k r
 
       Compose a b -> go a . go b
       Adjoint a   -> go (dagger a)
@@ -516,12 +488,12 @@ evalOpMat op k r = go op
                   s         = sin t :+ 0
                   i        = 0 :+ 1
                   (ϕ, px) = applyPauliProduct axis k r x
-                in  (c .*. x) .+.  (i*s*ϕ) .*. px
+                in  (c .* x) .+  (i*s*ϕ) .* px
     
     sub a = let f = evalOpMat a (k-1) r in f
           
 --------------------------------------------------------------------------------
--- Public “backend semantics”: QOp -> OpT on full state tensors
+-- Public semantics backend API: QOp -> OpT on full state tensors
 --------------------------------------------------------------------------------
 
 -- Convention: the runtime state is a rank-n tensor of shape [2,2,..,2] (n qubits).
