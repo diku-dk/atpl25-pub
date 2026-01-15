@@ -237,7 +237,7 @@ realMI = map (map (floor.realPart)) . toLists
 imagMI = map (map (floor.imagPart)) . toLists 
 
 {-| sparseMat takes an (m >< n) matrix and returns ((m,n), nonzeros) where nonzeros is a list of every nonzero index paired with the corresponding value. -}
-sparseMat :: CMat -> ((Int,Int), [((Int,Int),ComplexT)])
+sparseMat :: CMat -> SparseMat
 sparseMat mat = 
     let 
         (m,n) = (rows mat, cols mat)
@@ -247,9 +247,11 @@ sparseMat mat =
             (1,_) -> [((0,j), mat `atIndex` (0,j)) | j <- [0..n-1]]
             _     -> error $ show "Use sparseOp for operators"
     in
-        ((m,n), filter (\(_,v) -> (magnitude v > tol)) full_list)
+        SparseMat ((m,n), filter (\(_,v) -> (magnitude v > tol)) full_list)
 
 
+instance Convertible CMat SparseMat where
+    to mat = sparseMat mat
 
-
-
+    from (SparseMat ((m,n), nonzeros)) = error "CMat from SparseMat: not implemented yet."
+        

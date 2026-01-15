@@ -46,7 +46,8 @@ library core
       -- HQP Semantics backend implementations:
       HQP.QOp.MatrixSemantics     
       HQP.QOp.StatevectorSemantics
-      HQP.QOp.StateHmatrixSemantics
+      --HQP.QOp.StateHmatrixSemantics
+      HQP.QOp.MPSSemantics
       HQP.QOp.StabilizerSemantics 
       -- Pretty-printing HQP programs and representations:
       HQP.PrettyPrint
@@ -64,7 +65,8 @@ library core
         mtl,
         array,
         containers,
-        massiv
+        massiv,
+        vector
 --        hasktorch
     hs-source-dirs:   src
 

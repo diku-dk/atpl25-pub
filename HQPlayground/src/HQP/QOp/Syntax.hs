@@ -84,8 +84,6 @@ class (Scalar v ~ Complex (Realnum v), Floating (Realnum v), HasTensorProduct v)
 
   
 
-
-  
 class HasTensorProduct o where
   (⊗) :: o -> o -> o
 
@@ -137,3 +135,12 @@ op_qubits op = case op of
     Adjoint   a   -> op_qubits a
     Permute   ks  -> length ks 
     _             -> 1 -- 1-qubit gates
+
+-- | TODO: 1) Where should this live? 2) SparseMat t, 3) Useful functions for SparseMat
+data SparseMat = SparseMat ((Int,Int), [((Int,Int), ComplexT)])
+   deriving (Show,Eq)
+
+
+class Convertible a b where
+  to   :: a -> b
+  from :: b -> a

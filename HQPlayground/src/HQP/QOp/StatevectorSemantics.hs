@@ -348,6 +348,7 @@ applySX1 k r psi =
       m  = pow2 (k-1)
       a  = view2 (2*m,r) psi
       h  = 0.5 :+ 0
+      p, q :: ComplexT 
       (p,q)  = (1:+1, 1:+(-1))  -- (1+i), (1-i)
   in make2 (2*m,r) $ \(i,j) ->
       let i0 = if i < m then i else i - m
@@ -527,6 +528,7 @@ evalStep (st, outs, rng) step = let n = n_qubits st in
 evalProg steps psi0 rng0 = foldl evalStep (psi0, [], rng0) steps
 
 measure1 :: (StateT, Outcomes, RNG) -> Int -> (StateT, Outcomes, RNG)
+measure1 (_, _, []) _ = error "Random numbers exhausted."
 measure1 (state, outcomes, (r:rng)) k = let
       Sz2 m batch = A.size state
       n       = ilog2 m
@@ -610,6 +612,16 @@ instance CMatable StateT where
         let (m,n) = HMat.size mat
             xs     = concat $ HMat.toLists mat
         in fromWork $ make2 (m,n) $ \(i,j) -> xs !! (i*n + j)
+
+instance Convertible StateT SparseMat where
+  to psi =
+    let mat = toCMat psi
+    in (to mat :: SparseMat)
+
+  from (SparseMat ((m,n), nonzeros)) 
+    | n == 1 = let vec = HMat.assoc (m,1) 0 nonzeros
+               in fromCMat vec
+    | otherwise = error "Statevector StateT from SparseMat: only column vectors supported"
 
 --------------------------------------------------------------------------------
 -- Dagger (structural)

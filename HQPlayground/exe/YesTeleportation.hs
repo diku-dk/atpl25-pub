@@ -1,8 +1,9 @@
 module Main where 
 
 import HQP
-import HQP.QOp.MatrixSemantics
+--import HQP.QOp.MatrixSemantics
 --import HQP.QOp.StatevectorSemantics
+import HQP.QOp.MPSSemantics
 import HQP.PrettyPrint
 import System.Random(mkStdGen, randoms)
 -- import Data.List(intercalate)

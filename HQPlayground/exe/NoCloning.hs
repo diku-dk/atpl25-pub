@@ -2,7 +2,8 @@ module Main where
 
 import HQP.QOp
 -- import HQP.QOp.MatrixSemantics
-import HQP.QOp.StatevectorSemantics
+-- import HQP.QOp.StatevectorSemantics
+import HQP.QOp.MPSSemantics
 import HQP.PrettyPrint
 
 state1q :: ComplexT -> ComplexT -> StateT
