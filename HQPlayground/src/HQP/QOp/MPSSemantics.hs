@@ -4,7 +4,7 @@
 {-# LANGUAGE BangPatterns #-}
 
 
-module HQP.QOp.MPSSemanticsU
+module HQP.QOp.MPSSemantics
   ( -- * Types
     Site(..)
   , MPS(..)
