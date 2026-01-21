@@ -7,17 +7,16 @@ import Numeric.LinearAlgebra
 import Data.List (transpose, intercalate)
 
 -- ----- tolerances / helpers -----
-tol :: RealT
-tol = 1e-9
+pretty_tol :: RealT
+pretty_tol = 1e-9
 
 nearZero :: RealT -> Bool
-nearZero x = abs x <= tol
-
+nearZero x = abs x <= pretty_tol
 nearOne  :: RealT -> Bool
-nearOne x = abs (x - 1) <= tol
+nearOne x = abs (x - 1) <= pretty_tol
 
 nearInt :: RealT -> Maybe Int
-nearInt x = let r = round x in if abs (x - fromIntegral r) <= tol then Just r else Nothing
+nearInt x = let r = round x in if abs (x - fromIntegral r) <= pretty_tol then Just r else Nothing
 
 fmtD :: RealT -> String
 fmtD x = maybe (show x) show (nearInt x)  -- integers w/o ".0"
@@ -36,7 +35,7 @@ showR x =
     let 
         r = round x :: Int
     in
-        if abs(x - (fromIntegral r)) < tol 
+        if abs(x - (fromIntegral r)) < pretty_tol
         then show r
         else show x
 
@@ -65,7 +64,7 @@ factorCommonMag m =
        []     -> Nothing
        (x:xs) ->
          let c  = abs x
-             ok = all (\y -> abs (abs y - c) <= tol) xs
+             ok = all (\y -> abs (abs y - c) <= pretty_tol) xs
          in if ok
               then
                 let q y | nearZero y = 0
