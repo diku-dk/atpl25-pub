@@ -88,12 +88,25 @@ evalOp op = case op of
           matFunc exp ( (-ii*theta/2) .* mat )
 
   Permute ks -> let
-                      n = length ks
-                      dims = 1 `shiftL` n
-                      indices = [ (i, foldl (\acc (bit,pos) -> acc + (bit `shiftL` pos)) 0 (zip (toBits' n i) ks)) | i <- [0..dims-1] ]
-                      values  = replicate dims (1 :+ 0)
-                  in
-                      assoc (dims,dims) (0 :+ 0) (zip indices values)
+        n    = length ks
+        dims = 1 `shiftL` n
+
+        outIndex i = fromBits $ map (toBits' n i !!) ks   -- output bits in order [b_{ks0},..,b_{ks(n-1)}]
+
+        indices = [ (outIndex i, i) | i <- [0..dims-1] ]
+    in assoc (dims,dims) (0 :+ 0) (zip indices (replicate dims (1 :+ 0)))
+
+  Permute ks ->
+    let n    = length ks
+        dims = 1 `shiftL` n
+
+        outIndex i =
+            let b  = toBits' n i
+                b' = [ b !! (ks !! q) | q <- [0..n-1] ]   -- output[q] = input[ks[q]]
+            in  fromBits b'
+
+        indices = [ (outIndex i, i) | i <- [0..dims-1] ]  -- (row, col)
+    in assoc (dims,dims) (0 :+ 0) (zip indices (replicate dims (1 :+ 0)))
                                           
   C op1          ->  let 
                           mop = evalOp op1
@@ -253,5 +266,5 @@ sparseMat mat =
 instance Convertible CMat SparseMat where
     to mat = sparseMat mat
 
-    from (SparseMat ((m,n), nonzeros)) = error "CMat from SparseMat: not implemented yet."
+    from _ = error "CMat from SparseMat: not implemented yet."
         

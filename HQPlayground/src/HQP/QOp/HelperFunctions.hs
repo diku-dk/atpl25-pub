@@ -56,6 +56,10 @@ toBits' n k = let
   in
     (replicate (n-m) 0) ++ bits
 
+fromBits :: [Int] -> Int
+fromBits bs =
+        foldl (\acc b -> (acc `shiftL` 1) + b) 0 bs  -- MSB-first decode
+
 -- | Infinite list of powers of two, constructed with O(1) time per element
 powersOfTwo :: [Nat]
 powersOfTwo = iterate (*2) 1
