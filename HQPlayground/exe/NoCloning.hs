@@ -2,7 +2,7 @@ module Main where
 
 import HQP.QOp
 -- import HQP.QOp.MatrixSemantics
--- import HQP.QOp.StatevectorSemantics
+--import HQP.QOp.StatevectorSemantics
 import HQP.QOp.MPSSemantics
 import HQP.PrettyPrint
 
@@ -56,10 +56,11 @@ main = do
     let qpsipsi = quantum_cloned_state psi    
     printS qpsipsi
 
-    putStr "XOR clone   CX|ψ0> = "
     let cpsipsi = cx_cloned_state      psi    
-    printS cpsipsi
+    putStrLn $ "cpsipsi = " ++ (showState cpsipsi) ++ "\n"
 
+    putStr "XOR clone   CX|ψ0> = "
+    
     let mP  = measureProjection    
     let p10    = mP 2 1 0 -- Effect of measuring second qubit to 0
     let p11    = mP 2 1 1 -- Effect of measuring second qubit to 1
@@ -70,11 +71,20 @@ main = do
     let cpsi0 = apply p10 cpsipsi
     let cpsi1 = apply p11 cpsipsi
 
+    putStrLn $ "qpsi0 = " ++ (showState qpsi0)
+    putStrLn $ "cpsi0 = " ++ (showState cpsi0)
+    putStrLn $ "qpsi1 = " ++ (showState qpsi1)
+    putStrLn $ "cpsi1 = " ++ (showState cpsi1)
+
     let qm0prob = inner qpsipsi qpsi0
+    putStrLn $ "qm0prob = " ++ (show qm0prob)
     let qm1prob = inner qpsipsi qpsi1
+    putStrLn $ "qm1prob = " ++ (show qm1prob)
     let cm0prob = inner cpsipsi cpsi0
+    putStrLn $ "cm0prob = " ++ (show cm0prob)
     let cm1prob = inner cpsipsi cpsi1
-    
+    putStrLn $ "cm1prob = " ++ (show cm1prob)
+
     putStrLn "\n-- Mesurement probabilities --"
     putStrLn $ "Probability for measuring 0 on second qubit\n" ++
             " - for   |ΨΨ>:  <ΨΨ|IxP0|ΨΨ>         = " ++ (show qm0prob) ++ "\n" ++

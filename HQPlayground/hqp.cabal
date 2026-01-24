@@ -48,7 +48,6 @@ library core
       HQP.QOp.StatevectorSemantics
       --HQP.QOp.StateHmatrixSemantics
       HQP.QOp.MPSSemantics
-      HQP.QOp.MPSSemanticsU      
       HQP.QOp.StabilizerSemantics 
       -- Pretty-printing HQP programs and representations:
       HQP.PrettyPrint
