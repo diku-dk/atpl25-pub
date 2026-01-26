@@ -13,11 +13,16 @@ module HQP.QOp.MPSSemantics
   , evalOp, evalOpAtW
   , dagger
   ) where
+-- | TODO: 1. Query bond dimension
+---        2. Track accumulated error
+---        3. Clean up dirty bit (is it actually needed?)
+---        4. Write documentation
+---        5. Optimized multi-qubit rotation and multi-controlled gates
+---        6. Drop WorkT, since we no longer have lazy evaluation?
 
 import Data.Complex (Complex(..), conjugate, magnitude, realPart, imagPart)
 import qualified Data.Vector as V
-import Data.Vector ((!))
-import Data.Vector (Vector)
+import Data.Vector ((!), Vector, (//))
 import Data.Bits (shiftL, testBit, (.|.),xor)
 import Data.List (foldl', sortOn)
 import Data.Array (accumArray, elems)
@@ -30,7 +35,7 @@ import HQP.QOp.MatrixSemantics (CMat)
 import qualified HQP.QOp.MatrixSemantics as MS
 
 import Numeric.LinearAlgebra (
-  (><), atIndex, tr, rows, cols, diagBlock, diag, svd, dot, 
+  (><), atIndex, tr, rows, cols, size, diagBlock, diag, compactSVD, compactSVDTol, dot, 
   takeRows,takeColumns,dropRows,dropColumns)
 import qualified Numeric.LinearAlgebra as H
 import Numeric.LinearAlgebra.Devel (foldVector)
@@ -78,11 +83,27 @@ class HasWork t where
 instance HasWork StateT where toWork = id; fromWork = id
 
 invertVec :: Vector Int -> Vector Int
-invertVec l2p =
-  let n = V.length l2p
-  in V.replicate n 0 V.// [ (p,q) | (q,p) <- zip [0..] (V.toList l2p) ]
+invertVec v =
+  let n = V.length v
+  in  (V.replicate n 0) // [ (p,q) | (q,p) <- zip [0..] (V.toList v) ]
+
 instance HasTensorProduct MPS where (⊗) = tensorMPS
 
+{-| tensor product a ⊗ b for MPS a,b -}
+tensorMPS :: MPS -> MPS -> MPS
+tensorMPS a b =
+  let (na,nb) = (nSites a, nSites b)
+      l2p = V.generate (na+nb) $ \q -> if q < na then log2phys a ! q else na + log2phys b ! (q-na)
+  in MPS { scalar      = scalar a * scalar b, 
+           sites       = sites a V.++ sites b, 
+           center_site = if na > 0 then center_site a else na + center_site b, 
+           log2phys = l2p, 
+           phys2log = invertVec l2p, 
+           dirty = Just (Ival na (na + center_site b - 1)),
+           cfg = truncMax (cfg a) (cfg b) -- Worst accuracy guarantee determines overall accuracy
+           }
+
+{-| Combined truncation level: If we combine two MPS, use the least accurate truncation level -}
 truncMax :: EvalCfg -> EvalCfg -> EvalCfg
 truncMax c1 c2 = EvalCfg
   { trunc = case (trunc c1, trunc c2) of
@@ -92,16 +113,6 @@ truncMax c1 c2 = EvalCfg
   , tol = max (tol c1) (tol c2)
   }
 
-tensorMPS :: MPS -> MPS -> MPS
-tensorMPS a b =
-  let cfg' = truncMax (cfg a) (cfg b)
-      na = nSites a; nb = nSites b
-      ss = sites a V.++ sites b
-      l2p = V.generate (na+nb) $ \q -> if q < na then log2phys a ! q else na + log2phys b ! (q-na)
-      p2l = invertVec l2p
-      c   = if na > 0 then center_site a else na + center_site b
-  in MPS { scalar = scalar a * scalar b, sites = ss, center_site = c, log2phys = l2p, 
-           phys2log = p2l, dirty = Nothing, cfg = cfg' }
 
 withSameFrame :: String -> WorkT -> WorkT -> (WorkT -> WorkT -> a) -> a
 withSameFrame ctx x y k
@@ -120,7 +131,7 @@ absorbScalarAt p m
       let c = scalar m
           s = sites m ! p
           s' = Site (c .* (a0 s)) (c .* (a1 s))
-      in m { scalar = 1:+0, sites = sites m V.// [(p,s')] }
+      in m { scalar = 1:+0, sites = sites m V.// [(p,s')] } 
 
 markDirtyIval :: Interval -> MPS -> MPS
 markDirtyIval i m = m { dirty = Just $ maybe i (hull i) (dirty m) }
@@ -128,21 +139,21 @@ markDirtyIval i m = m { dirty = Just $ maybe i (hull i) (dirty m) }
 clearDirty :: MPS -> MPS
 clearDirty m = m { dirty = Nothing }
 
-(.*.) = (H.<>)
+(.*.) = (H.<>) -- HMatrix <> conflicts with Prelude.<>
 
 innerMPS :: HasCallStack => WorkT -> WorkT -> ComplexT
 innerMPS x0 y0 = -- trace ("innerMPS(" ++ showState x0 ++ ", " ++ showState y0 ++ ")") $      
   withSameFrame "innerMPS" x0 y0 $ \x y ->
   let n  = nSites x
       (sx, sy) = (scalar x, scalar y)
-      e0 = foldl' step ((1><1) [1:+0]) [n-1, n-2 .. 0]
-      step e p = -- trace("step "++show p) $ 
+      e0 = foldl' step ((1><1) [1:+0]) [n-1, n-2 .. 0] -- Full sweep for contraction
+      step e p = -- e is contraction accumulator ("environment" in MPS lingo), p is current site
         let Site xa0 xa1 = sites x ! p
             Site ya0 ya1 = sites y ! p
             --dims xs = map (\m -> (rows m, cols m)) xs
             term xs ys = --trace(show $ dims [xs,tr xs,e,ys]) $ 
-                        ys .*. e .*. tr xs
-        in term xa0 ya0 + term xa1 ya1
+                        ys .*. e .*. tr xs -- Contract with accumulator. Why are dims reversed at this point?
+        in term xa0 ya0 + term xa1 ya1 -- Contract over 0,1 
       dotprod = conjugate sx * sy * (e0 `atIndex` (0,0))
   in 
     --trace("innerMPS = " ++ show dotprod) 
@@ -168,7 +179,7 @@ data EvalCfg = EvalCfg { trunc :: !Trunc, tol :: !Double } deriving (Show,Eq)
 defaultCfg :: EvalCfg
 defaultCfg = EvalCfg { trunc = Exact, tol = 1e-12 }
 
--- structural dagger
+-- structural dagger -- move to Syntax?
 dagger :: QOp -> QOp
 dagger = \case
   Id n          -> Id n
@@ -191,8 +202,7 @@ ketW :: [Int] -> WorkT
 ketW bs =
   let n = length bs
       mk b = let v0 = if b==0 then 1:+0 else 0:+0
-                 v1 = if b==1 then 1:+0 else 0:+0
-             in Site (H.fromLists [[v0]]) (H.fromLists [[v1]])
+             in Site ((1><1) [v0]) ((1><1) [1-v0])
       ss  = V.fromList (map mk bs)
       idm = V.generate n id
   in MPS { scalar = 1:+0, sites = ss, center_site = 0, log2phys = idm, phys2log = idm, dirty = Nothing, cfg = defaultCfg }
@@ -206,18 +216,21 @@ applyPermute base π m =
       l2p  = log2phys m
       sl   = V.slice base n l2p
       sl'  = V.fromList [ sl ! k | k <- π ]
-      l2p' = l2p V.// [ (base+i, sl' ! i) | i <- [0..n-1] ]
+      l2p' = l2p // [ (base+i, sl' ! i) | i <- [0..n-1] ]
       p2l' = invertVec l2p'
-  in m { log2phys = l2p', phys2log = p2l' }
+  in m { log2phys = l2p', 
+         phys2log = p2l' }
 
 -- small matrix helpers
 hcat, vcat :: CMat -> CMat -> CMat
 hcat = (H.|||)
 vcat = (H.===)
 
-
+{-| Dense matrix representation of two adjacent sites 
+               [ A0 ]
+     Θ2(A,B) = [ A1 ] [B0 B1] -}
 theta2 :: Site -> Site -> CMat
-theta2 a b = vcat (a0 a) (a1 a) .*. hcat (a0 b) (a1 b)
+theta2 a b = vcat (a0 a)  (a1 a) .*. hcat (a0 b) (a1 b)
 
 chooseChi :: EvalCfg -> H.Vector Double -> Int
 chooseChi cfg s =
@@ -235,28 +248,38 @@ chooseChi cfg s =
                       in tailE <= eps2 * tot
          in head ([chi | chi <- [1..cap], ok chi] ++ [cap])
 
-leftFromU :: Int -> CMat -> Site
-leftFromU dl u = Site (takeRows dl u) (dropRows dl u)
 
-rightFromMat :: Int -> CMat -> Site
-rightFromMat dr m = Site (takeColumns dr m) (dropColumns dr m)
+diagMulLeft :: H.Vector Double -> CMat -> CMat
+diagMulLeft v m = (H.complex . H.asColumn $ v) * m
+
+diagMulRight :: CMat -> H.Vector Double -> CMat
+diagMulRight m v = m * (H.complex . H.asRow $ v)
+
+svd_chi :: EvalCfg -> CMat -> (CMat, H.Vector Double, CMat, Int)
+svd_chi cfg m = case trunc cfg of
+  Exact -> let 
+              (u,s,v) = compactSVD m
+              chi = size s
+            in (u, s, v, chi)
+  Truncate{maxBond, eps2} -> let (u,s,v) = compactSVDTol eps2 m -- TODO: Check def 
+                                 chi     = min maxBond (size s)
+                                 u'      = H.takeColumns chi u
+                                 v'      = H.takeColumns chi v
+                            in (u', s, v', chi)
 
 moveRight :: Int -> WorkT -> WorkT
 moveRight j m
   | j < 0 || j+1 >= nSites m = error "moveRight"
   | otherwise =
       let 
-          a = sites m ! j
-          b = sites m ! (j+1)
-          dl = rows (a0 a)
-          dr = cols (a0 b)
-          (u,s,v) = svd (theta2 a b)
-          chi = chooseChi (cfg m) s
-          u'  = H.takeColumns chi u
-          v'  = H.takeColumns chi v
-          sig = diag (H.fromList [ (x:+0) | x <- take chi (H.toList s) ])
-          a'  = leftFromU dl u'
-          b'  = rightFromMat dr (sig .*. tr v')
+          (a, b)       = (sites m ! j, sites m ! (j+1))
+          (dl, dr)     = (rows (a0 a), cols (a0 b)) -- External bond dimensions
+          (u,s,v,chi)  = svd_chi (cfg m) (theta2 a b) -- compactSVD (exact or tol truncated) or thinSVD (maxbond truncated). χ is the new internal bond dimension
+--          (u',v')  = H.takeColumns chi <$> (u,v)
+          a'  = Site (takeRows dl u) (dropRows dl u) -- Left Isometry A'
+          -- Absorb singular values into B'. Θ = U S V† = A' B'  =>  B' = S V† 
+          sv  = diagMulLeft s (tr v)
+          b'  = Site (takeColumns dr sv) (dropColumns dr sv)
       in m { sites = sites m V.// [(j,a'),(j+1,b')], center_site = j+1 }
 
 moveLeft :: Int -> WorkT -> WorkT
@@ -264,17 +287,13 @@ moveLeft j m
   | j <= 0 || j >= nSites m = error "moveLeft"
   | otherwise =
       let i = j-1
-          a = sites m ! i
-          b = sites m ! j
-          dl = rows (a0 a)
-          dr = cols (a0 b)
-          (u,s,v) = svd (theta2 a b)
-          chi = chooseChi (cfg m) s
-          u'  = takeColumns chi u
-          v'  = takeColumns chi v
-          sig = diag (H.fromList [ (x:+0) | x <- take chi (H.toList s) ])
-          a'  = leftFromU dl (u' .*. sig)
-          b'  = rightFromMat dr (tr v')
+          (a,b)       = (sites m ! i, sites m ! j)
+          (dl, dr)    = (rows (a0 a), cols (a0 b))
+          (u,s,v,chi) = svd_chi (cfg m) (theta2 a b)
+          -- Absorb singular values into A'. Θ = U S V† = A' B'  =>  A' = U S
+          us  = diagMulRight u s
+          a'  = Site (takeRows dl us) (dropRows dl us)
+          b'  = Site (takeColumns dr (tr v)) (dropColumns dr (tr v))
       in m { sites = sites m V.// [(i,a'),(j,b')], center_site = j-1 }
 
 moveCenterToPhys :: Int -> WorkT -> WorkT
@@ -586,3 +605,9 @@ evalStep (st, outs, rng) step = -- trace("step "++showStep step ++ " on " ++ sho
 
 evalProg :: Program -> StateT -> RNG -> (StateT, Outcomes, RNG)
 evalProg prog st rng = foldl' evalStep (st, [], rng) prog
+
+maxBondDimension :: MPS -> Int
+maxBondDimension mps =
+  let ds = V.toList $ sites mps
+      bondDims s = [ rows (a0 s), cols (a0 s) ]
+  in maximum $ concatMap bondDims ds
