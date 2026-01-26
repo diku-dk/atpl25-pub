@@ -253,14 +253,14 @@ imagMI = map (map (floor.imagPart)) . toLists
 sparseMat :: CMat -> SparseMat
 sparseMat mat = 
     let 
-        (m,n) = (rows mat, cols mat)
+        (m,n) = (rows mat, cols mat) 
         full_list = case (m,n) of
             (1,1) -> []
-            (_,1) -> [((i,0), mat `atIndex` (i,0)) | i <- [0..m-1]]
-            (1,_) -> [((0,j), mat `atIndex` (0,j)) | j <- [0..n-1]]
+            (_,1) -> [((fromIntegral i,0), mat `atIndex` (i,0)) | i <- [0..m-1]]
+            (1,_) -> [((0,fromIntegral j), mat `atIndex` (0,j)) | j <- [0..n-1]]
             _     -> error $ show "Use sparseOp for operators"
     in
-        SparseMat ((m,n), filter (\(_,v) -> (magnitude v > tol)) full_list)
+        SparseMat ((fromIntegral m, fromIntegral n), filter (\(_,v) -> (magnitude v > tol)) full_list)
 
 
 instance Convertible CMat SparseMat where

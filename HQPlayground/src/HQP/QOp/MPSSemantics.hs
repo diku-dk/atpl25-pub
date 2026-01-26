@@ -28,7 +28,7 @@ import Data.List (foldl', sortOn)
 import Data.Array (accumArray, elems)
 import qualified Data.Set as S
 import HQP.QOp.Syntax
-import HQP.QOp.HelperFunctions (invertPerm, ilog2, toBits', op_support)
+import HQP.QOp.HelperFunctions (invertPerm, ilog2,integerlog2, toBits', op_support)
 import HQP.PrettyPrint.PrettyMatrix 
 import HQP.PrettyPrint.PrettyOp
 import HQP.QOp.MatrixSemantics (CMat)
@@ -93,13 +93,15 @@ instance HasTensorProduct MPS where (⊗) = tensorMPS
 tensorMPS :: MPS -> MPS -> MPS
 tensorMPS a b =
   let (na,nb) = (nSites a, nSites b)
+      (a',b') = (moveCenterToPhys (na-1) a, moveCenterToPhys 0 b)
       l2p = V.generate (na+nb) $ \q -> if q < na then log2phys a ! q else na + log2phys b ! (q-na)
   in MPS { scalar      = scalar a * scalar b, 
            sites       = sites a V.++ sites b, 
            center_site = if na > 0 then center_site a else na + center_site b, 
            log2phys = l2p, 
            phys2log = invertVec l2p, 
-           dirty = Just (Ival na (na + center_site b - 1)),
+           dirty = Nothing, 
+           --dirty = Just (Ival (na-1) (na+1)),
            cfg = truncMax (cfg a) (cfg b) -- Worst accuracy guarantee determines overall accuracy
            }
 
@@ -412,8 +414,8 @@ mulVecMat v m = H.flatten (H.asRow v .*. m)
 toSparseMat :: (HasWork t) => Double -> Int -> t -> SparseMat
 toSparseMat eps maxTerms t0 =
   let mps = compressIfDirty (toWork t0)
-      n   = nSites mps
-      dim = 1 `shiftL` n
+      n   = fromIntegral . nSites $ mps
+      dim = 2^n :: Integer
       -- states are (index, row-vector on current bond)
       step states p =
         let Site x0 x1 = sites mps ! p
@@ -433,13 +435,13 @@ toSparseMat eps maxTerms t0 =
         in [ (i,v) | (i,v,_) <- best ]
       finals = foldl' step [(0, H.fromList [scalar mps])] [0..n-1]
       nz = [ ((i,0), v `H.atIndex` 0) | (i,v) <- finals, H.size v == 1, magnitude (v `H.atIndex` 0) > eps ]
-  in SparseMat ((dim,1), nz)
+  in trace ("nSites = "++show n++", dim = "++show dim) SparseMat ((dim,1), nz)
 
 instance Convertible WorkT SparseMat where
   to   mps = toSparseMat (tol $ cfg mps) 100 mps
   from = \sm ->
     let (SparseMat ((m,_), nonzeros)) = sm
-        n = ilog2 m
+        n = integerlog2 m
         kets = [ a .* ketW (toBits' n k) | ((k,_),a) <- nonzeros ] :: [WorkT]
     in case kets of
          [] -> error "fromSparseMat: empty"
@@ -449,7 +451,7 @@ instance Convertible WorkT SparseMat where
 instance Convertible StateT CMat where
   to psi = 
     let (SparseMat ((m,_), nonzeros)) = to psi :: SparseMat
-        n = ilog2 m
+        n = integerlog2 m
         kets  = [a .* (MS.ket $ toBits' n k) | ((k,_),a) <- nonzeros] :: [CMat]
     in
       foldr1 (.+) kets

@@ -31,7 +31,8 @@ common common-options
         ScopedTypeVariables,
         GeneralizedNewtypeDeriving,
         DataKinds,
-        UndecidableInstances
+        UndecidableInstances,
+        MagicHash
 
 library core
     import:   warnings, common-options
@@ -67,6 +68,7 @@ library core
         containers,
         massiv,
         vector,
+        integer-logarithms,
         deepseq
 --        hasktorch
     hs-source-dirs:   src

@@ -1,7 +1,8 @@
 module HQP.QOp.HelperFunctions where
-import HQP.QOp.Syntax
+import HQP.QOp.Syntax hiding (I)
 import Data.Bits(FiniteBits,finiteBitSize,countLeadingZeros,countTrailingZeros,shiftL,shiftR)
 import Data.List (sort)
+import Math.NumberTheory.Logarithms (integerLog2')
 import qualified Data.Set as S
 
 
@@ -45,11 +46,11 @@ op_support op = let
 
 
 -- Small helper functions
-toBits :: (Integral a) => a -> [a]
+toBits :: (Integral a) => a -> [Nat]
 toBits 0 = []
-toBits k = (toBits (k `div` 2)) ++ [(k `mod` 2)]
+toBits k = (toBits (k `div` 2)) ++ [fromIntegral (k `mod` 2)]
 
-toBits' :: Nat -> Nat -> [Nat]
+toBits' :: Integral t => Int -> t -> [Nat]
 toBits' n k = let 
     bits = toBits k
     m    = length bits
@@ -73,8 +74,12 @@ bitIndexLSB ks = dotlists ks powersOfTwo
 
 
 -- | ilog2 m = floor (log2 m) for m >= 0
+
 ilog2 :: (FiniteBits a, Integral a) => a -> Nat
 ilog2 m = finiteBitSize m - countLeadingZeros m - 1
+
+integerlog2 :: Integer -> Int
+integerlog2 = integerLog2'
 
 pow2 :: Nat -> Nat
 pow2 n = 1 `shiftL` n

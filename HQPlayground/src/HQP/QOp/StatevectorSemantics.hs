@@ -619,7 +619,7 @@ instance Convertible StateT SparseMat where
     in (to mat :: SparseMat)
 
   from (SparseMat ((m,n), nonzeros)) 
-    | n == 1 = let vec = HMat.assoc (m,1) 0 nonzeros
+    | n == 1 = let vec = HMat.assoc (fromInteger m,1) 0 [((fromInteger i, fromInteger j), v) | ((i,j),v) <- nonzeros]
                in fromCMat vec
     | otherwise = error "Statevector StateT from SparseMat: only column vectors supported"
 

@@ -2,6 +2,7 @@ module HQP.QOp.Syntax where
 import Data.Complex
 import Data.Word
 import Data.Bits(FiniteBits,finiteBitSize,countTrailingZeros,countLeadingZeros,shiftL,shiftR)
+import Debug.Trace(trace)
 
 type Nat = Int
 type RealT = Double  -- Can be replaced by e.g. exact fractions or constructive reals
@@ -137,7 +138,7 @@ op_qubits op = case op of
     _             -> 1 -- 1-qubit gates
 
 -- | TODO: 1) Where should this live? 2) SparseMat t, 3) Useful functions for SparseMat
-data SparseMat = SparseMat ((Int,Int), [((Int,Int), ComplexT)])
+data SparseMat = SparseMat ((Integer,Integer), [((Integer,Integer), ComplexT)])
    deriving (Show,Eq)
 
 

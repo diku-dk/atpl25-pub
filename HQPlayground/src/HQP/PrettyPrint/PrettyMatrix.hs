@@ -2,7 +2,7 @@ module HQP.PrettyPrint.PrettyMatrix where
 
 import HQP.QOp.Syntax(RealT,ComplexT,SparseMat(..),Convertible(..))
 import HQP.QOp.MatrixSemantics(CMat,RMat, sparseMat,CMatable(..))
-import HQP.QOp.HelperFunctions(toBits', ilog2)
+import HQP.QOp.HelperFunctions(toBits', integerlog2, ilog2)
 import Numeric.LinearAlgebra
 import Data.List (transpose, intercalate)
 
@@ -40,9 +40,10 @@ showR x =
         else show x
 
 showSparse :: SparseMat -> String
+-- showSparse = show
 showSparse ( SparseMat ((m,n), nonzeros) ) = 
     let
-          (logm,logn) = (ilog2 m, ilog2 n)
+          (logm,logn) = (integerlog2 m, integerlog2 n)
     in
         case (m,n) of 
             (1,1) -> ""
