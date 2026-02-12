@@ -19,8 +19,8 @@ main = do
     let rng0 = randoms (mkStdGen 42) :: [Double]    
     -- let rng0 = [0.9,0.9..]
 
-    let m = 4  -- number of message qubits to teleport
-        l = 20  -- number of links between source and target nodes
+    let m = 6  -- number of message qubits to teleport
+        l = 10  -- number of links between source and target nodes
         n = 3*m+2*l
     
     let message_qubits =                [0..m-1] -- m message qubits
@@ -35,23 +35,11 @@ main = do
         {-| Very secret message consisting of 2^m complex amplitudes.
             We use 1,2,...,2^m as an example message, we can transmit
             any m-qubit quantum state. -}
-        message_mat =  ((2^m) >< 1) [c :+ 0 | c <- [0,1..2^m-1]] :: CMat
-    
-    putStrLn . show $ rows message_mat
-
-    let 
-        message' = from message_mat :: StateT
-    
-    putStrLn $ "message' = " ++ showState message'
-    
-    let
-        --message' = trace("fold") foldr1 (.+) 
-        --[ (fromIntegral c :+ 0) .* ket (toBits' m c) | c <- [0..2^m-1] ] :: StateT
-        nrm    = norm message' :+ 0
-    putStrLn $ "nrm = " ++ show nrm        
-    let 
+        message_mat = ((2^m) >< 1) [c :+ 0 | c <- [0,1..2^m-1]] :: CMat
+        message'    = from message_mat :: StateT
+        nrm         = norm message' :+ 0
         message = (1 / nrm) .* message'  -- normalize the message state
-    putStrLn $ "message = " ++ showState message
+
 
     let
         --nrm = 1 :: ComplexT
@@ -70,6 +58,7 @@ main = do
     let psi_chain = ket (replicate (2*m+2*l) 0) :: StateT  -- initial all-zero state for Bell-chain qubits
         psi = message ⊗ psi_chain  -- initial all-zero state and teleport message
 
+    putStr $ "|ψ_0> = "++(showState psi_chain) ++ "\n"
     putStr $ "|ψ_0 ⊗ ψ_m> = " ++(showState psi) ++ "\nRunning repeater + teleportation program!\n"
     putStr $ "State qubits: " ++ show (n_qubits psi) ++ "\n\n"
     putStr $ "State norm: "   ++ show (norm psi) ++ "\n\n"
