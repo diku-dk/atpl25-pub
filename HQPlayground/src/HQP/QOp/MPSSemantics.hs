@@ -133,18 +133,12 @@ mergeProfile (Just p1) (Just p2) = Just $ ProfileCfg
   }
 
 withSameFrame :: String -> WorkT -> WorkT -> (WorkT -> WorkT -> a) -> a
-withSameFrame ctx x y k
+withSameFrame ctx x y f
   | nSites x /= nSites y      = error (ctx ++ ": arity mismatch")
-  | log2phys x == log2phys y  = k x y
-  | otherwise                 = k x (relabelTo (log2phys x) y)
+  | log2phys x == log2phys y  = f x y
+  | otherwise                 = f (normalizeSiteOrder x) (normalizeSiteOrder y)
 
 -- Relabel y so that its logical wires match the target frame.
--- This is correct because your Permute semantics only updates these maps.
-relabelTo :: Vector Int -> WorkT -> WorkT
-relabelTo targetL2P y =
-  y { log2phys = targetL2P
-    , phys2log = invertVec targetL2P
-    }
 
 scaleMPS :: ComplexT -> MPS -> MPS
 scaleMPS c m = m { scalar = c * scalar m }
@@ -352,8 +346,10 @@ moveLeft j m
       in m { sites = sites m V.// [(i,a'),(j,b')], center_site = j-1, cfg = cfg' }
 
 
-swapSites :: Int -> WorkT -> WorkT
-swapSites j psi = let 
+-- TODO: This can be done cheaper by QR-decomposition and setting the dirty bit.
+--       If inv(p) is quadratic, we can reduce to O(n^2) QR's and O(n) SVD's.
+swapSites :: WorkT -> Int -> WorkT
+swapSites psi j  = let 
     n = nSites psi
   in
     if j < 0 || j+1 >= n then error "swapSites"
@@ -376,6 +372,17 @@ swapSites j psi = let
           cfg' = updateProfile (cfg psi) (size s) δ          
       in psi { sites = sites psi V.// [(j,a'),(j+1,b')], cfg = cfg' }
 
+permutePhysicalSwaps :: WorkT -> [Int] -> WorkT
+permutePhysicalSwaps = foldl' swapSites -- inv(pi) swaps (w/ SVD), so O(n^2 χ^3) worst case.
+
+-- | Reorder the "physical" qubit sites to match the logical qubit order. This is needed before
+--   adding two MPS together. 
+normalizeSiteOrder :: WorkT -> WorkT
+normalizeSiteOrder psi =
+  let swaps = permutationSwaps (phys2log psi)
+      psi'  = permutePhysicalSwaps psi swaps
+      ident = V.generate (nSites psi) id 
+  in psi' { log2phys = ident, phys2log = ident }
 
 moveCenterToPhys :: Int -> WorkT -> WorkT
 moveCenterToPhys p0 = go where
@@ -486,13 +493,10 @@ addMPS ψ φ =
             (Nothing, Nothing) -> Ival 0 (max 0 (n-1))
   in addLocal i ψ φ
 
-mulVecMat :: CVec -> CMat -> CVec
-mulVecMat v m = H.flatten (H.asRow v .*. m)
-
 -- beam-search sparse extraction (fast for low-entanglement states)
 toSparseMat :: (HasWork t) => Double -> Int -> t -> SparseMat
 toSparseMat eps maxTerms t0 =
-  let mps  = compressIfDirty (toWork t0)
+  let mps  = moveCenterToPhys 0 (toWork t0) -- ensures partial path amplitudes are strict bounds (yielding exact largest amplitudes)
       n    = nSites mps 
       dim  = 2^(fromIntegral n :: Integer)
       eps2 = eps * eps
@@ -642,9 +646,9 @@ evalOpAtW base op st = case op of
   Z  -> apply1Logical base 0 (pauliGate Z) st
   H  -> let s = (1/sqrt 2):+0 in apply1Logical base 0 (s,s,s,-s) st
   SX ->
-    let a = 0.5:+0.5
-        b = 0.5:+(-0.5)
-    in apply1Logical base 0 (a,a,b,a) st
+    let p = 0.5:+0.5
+        m = 0.5:+(-0.5)
+    in apply1Logical base 0 (p,p,m,p) st
   
   Tensor a b ->
     let st1 = evalOpAtW base a st
@@ -657,6 +661,8 @@ evalOpAtW base op st = case op of
   
   R axis θ -- TODO: Optimize 1 qubit case
     | θ == 0 -> st
+    | n_qubits axis == 1 -> let u = pauliGate axis
+                            in apply1Logical base 0 u st
     | otherwise ->
         let t = pi * fromRational θ / 2
             c = cos t :+ 0
