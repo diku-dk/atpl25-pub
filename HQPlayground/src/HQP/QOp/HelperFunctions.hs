@@ -5,8 +5,11 @@ import Data.List (sort)
 import Math.NumberTheory.Logarithms (integerLog2')
 import Numeric.LinearAlgebra hiding (scale, (<>), trace)
 import qualified Data.PQueue.Prio.Min as PriorityQ
+import qualified Data.Vector as V
 import qualified Data.Vector.Generic as G
+import qualified Data.Vector.Mutable as MV
 import qualified Data.Set as S
+import Control.Monad.ST (runST)
 
 
 -- | Signature of an operator a: C^{2^m} -> C^{2^n} is (m,n) = (op_domain a, op_range a)
@@ -92,6 +95,7 @@ evenOdd [] = ([],[])
 evenOdd [x] = ([x],[])
 evenOdd (x:y:xs) = let (es,os) = evenOdd xs in (x:es,y:os)
 
+-- | Working with permutations
 permApply :: [Int] -> [a] -> [a]
 permApply ks xs = [ xs !! k | k <- ks ]
 
@@ -101,6 +105,47 @@ permSupport ks = [ i | (i,j) <- zip [0..] ks, i /= j ]
 invertPerm :: [Int] -> [Int] -- TODO: invertPerm -> permInvert for consistency
 invertPerm ks = map snd $  -- For each index in the output, find its position in the input
     sort [ (k, i) | (i, k) <- zip [0..] ks ]
+
+
+
+-- | Minimal adjacent-swap indices (0-based) sending permutation p to identity.
+--   Swap index i means swapping positions i and i+1.
+--
+--   For v = 0..n-1, move value v left until it sits at position v.
+--   Each step performs exactly the inversions involving v, so total swap count is minimal,
+--   one of very few applications where bubble sort is optimal.
+--
+-- Uses locally mutable vectors to avoid the  O(n^2) worst case unless it is actually needed:
+-- Θ(n+inv(p)) instead of Θ(n^2+inv(p)) = O(n^2).
+permutationSwaps :: V.Vector Int -> [Int]
+permutationSwaps p0 = runST $ do
+  let n    = V.length p0
+      -- inverse permutation: pos[v] = index where value v currently sits
+      pos0 = V.update (V.replicate n 0) (V.indexed p0)
+  p   <- V.thaw p0
+  pos <- V.thaw pos0
+
+  let -- adjacent swap s_i: swap p[i],p[i+1] and update pos accordingly
+      swapAt i = do -- Updates mutable vectors p and pos to swap values at positions i and i+1
+        a <- MV.read p i; b <- MV.read p (i+1)
+        MV.write p i b;   MV.write p (i+1) a
+        MV.write pos a (i+1); MV.write pos b i
+
+      -- bubble value v left by s_{k-1} ... s_v, where k = pos[v]
+      bubble v k swaps
+        | k <= v    = pure swaps
+        | otherwise = let i = k-1 in swapAt i >> bubble v i (i:swaps)
+
+      -- Bubble sort remaining values v..n-1, assuming positions 0..v-1 are already sorted: 
+      -- p[j]=j for all j < v,
+      -- while producing the list of swaps performed.
+      sortFrom v swaps
+        | v >= n    = pure (reverse swaps)
+        | otherwise = MV.read pos v 
+                  >>= \k -> bubble v k swaps 
+                  >>= sortFrom (v+1)
+
+  sortFrom 0 []
 
 
 -- HMatrix helper functions
