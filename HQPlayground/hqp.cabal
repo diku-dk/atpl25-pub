@@ -69,7 +69,10 @@ library core
         massiv,
         vector,
         integer-logarithms,
-        deepseq
+        deepseq,
+        ieee754,
+        pqueue,
+        tasty
 --        hasktorch
     hs-source-dirs:   src
 
@@ -109,4 +112,14 @@ executable TestRepeater
       -Wno-missing-signatures
       -Wno-name-shadowing
       -Wno-incomplete-uni-patterns
+
+executable TestQFT
+  import: exe-common
+  main-is: TestQFT.hs
+  build-depends:
+    random
+  ghc-options:
+      -Wno-missing-signatures
+      -Wno-name-shadowing
+      -Wno-incomplete-uni-patterns      
 

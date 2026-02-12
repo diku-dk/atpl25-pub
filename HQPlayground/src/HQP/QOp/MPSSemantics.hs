@@ -6,19 +6,23 @@
 module HQP.QOp.MPSSemantics
   ( Site(..), MPS(..), StateT, WorkT
   , Interval(..)
-  , Trunc(..), EvalCfg(..), defaultCfg
+  , Trunc(..), EvalCfg(..), defaultCfg, ProfileCfg(..)
   , ket, ketW, toSparseMat
   , measureProjection, measure1
   , apply, evalStep, evalProg
   , evalOp, evalOpAtW
   , dagger
+  , approxCfg, compressRange, moveCenterToPhys, bondDimensions, maxBondDimension
   ) where
--- | TODO: 1. Query bond dimension
----        2. Track accumulated error
+-- | TODO: DONE Query bond dimension
+---        DONE Track accumulated error
+---        1. Implement "physical" permutation of MPS sites
+---        2. R (1-qubit) θ -> single-site gate. 
 ---        3. Clean up dirty bit (is it actually needed?)
 ---        4. Write documentation
 ---        5. Optimized multi-qubit rotation and multi-controlled gates
 ---        6. Drop WorkT, since we no longer have lazy evaluation?
+---        7. Visualization tools for MPS
 
 import Data.Complex (Complex(..), conjugate, magnitude, realPart, imagPart)
 import qualified Data.Vector as V
@@ -28,16 +32,19 @@ import Data.List (foldl', sortOn)
 import Data.Array (accumArray, elems)
 import qualified Data.Set as S
 import HQP.QOp.Syntax
-import HQP.QOp.HelperFunctions (invertPerm, ilog2,integerlog2, toBits', op_support)
+import HQP.QOp.HelperFunctions 
 import HQP.PrettyPrint.PrettyMatrix 
 import HQP.PrettyPrint.PrettyOp
 import HQP.QOp.MatrixSemantics (CMat)
 import qualified HQP.QOp.MatrixSemantics as MS
+import qualified Data.PQueue.Prio.Min as PriorityQ
 
 import Numeric.LinearAlgebra (
-  (><), atIndex, tr, rows, cols, size, diagBlock, diag, compactSVD, compactSVDTol, dot, 
-  takeRows,takeColumns,dropRows,dropColumns)
+  (><), (<#), (#>), atIndex, tr, rows, cols, size, diagBlock, diag, compactSVD, compactSVDTol, dot, 
+  takeRows,takeColumns,dropRows,dropColumns,cmap,maxElement, fromLists, toLists
+  )
 import qualified Numeric.LinearAlgebra as H
+import Numeric.IEEE(epsilon)
 import Numeric.LinearAlgebra.Devel (foldVector)
 import Debug.Trace (trace)
 import GHC.Stack (HasCallStack, callStack, prettyCallStack)
@@ -70,6 +77,7 @@ data MPS = MPS
   , phys2log   :: !(Vector Int)
   , dirty      :: !(Maybe Interval)
   , cfg        :: !EvalCfg
+
   } deriving (Show,Eq)
 
 nSites :: MPS -> Int
@@ -96,13 +104,13 @@ tensorMPS a b =
       (a',b') = (moveCenterToPhys (na-1) a, moveCenterToPhys 0 b)
       l2p = V.generate (na+nb) $ \q -> if q < na then log2phys a ! q else na + log2phys b ! (q-na)
   in MPS { scalar      = scalar a * scalar b, 
-           sites       = sites a V.++ sites b, 
+           sites       = sites a' V.++ sites b', 
            center_site = if na > 0 then center_site a else na + center_site b, 
            log2phys = l2p, 
            phys2log = invertVec l2p, 
            dirty = Nothing, 
            --dirty = Just (Ival (na-1) (na+1)),
-           cfg = truncMax (cfg a) (cfg b) -- Worst accuracy guarantee determines overall accuracy
+           cfg = truncMax (cfg a) (cfg b) -- Worst accuracy guarantee determines overall accuracy           
            }
 
 {-| Combined truncation level: If we combine two MPS, use the least accurate truncation level -}
@@ -111,16 +119,32 @@ truncMax c1 c2 = EvalCfg
   { trunc = case (trunc c1, trunc c2) of
       (Exact, t) -> t
       (t, Exact) -> t
-      (Truncate m1 e1, Truncate m2 e2) -> Truncate (min m1 m2) (max e1 e2)
+      (Truncate m1 e1 p1, Truncate m2 e2 p2) -> Truncate (min m1 m2) (max e1 e2) (mergeProfile p1 p2)
   , tol = max (tol c1) (tol c2)
   }
 
+mergeProfile :: Maybe ProfileCfg -> Maybe ProfileCfg -> Maybe ProfileCfg
+mergeProfile Nothing p = p
+mergeProfile p Nothing = p
+mergeProfile (Just p1) (Just p2) = Just $ ProfileCfg
+  { nSVDs      = nSVDs p1 + nSVDs p2
+  , maxBondDim = max (maxBondDim p1) (maxBondDim p2)
+  , errorBound = max (errorBound p1) (errorBound p2)
+  }
 
 withSameFrame :: String -> WorkT -> WorkT -> (WorkT -> WorkT -> a) -> a
 withSameFrame ctx x y k
-  | nSites   x /= nSites   y = error (ctx ++ ": arity mismatch")
-  | log2phys x /= log2phys y = error (ctx ++ ": wire-map mismatch") -- TODO: Rewire automatically?
-  | otherwise                = k x y
+  | nSites x /= nSites y      = error (ctx ++ ": arity mismatch")
+  | log2phys x == log2phys y  = k x y
+  | otherwise                 = k x (relabelTo (log2phys x) y)
+
+-- Relabel y so that its logical wires match the target frame.
+-- This is correct because your Permute semantics only updates these maps.
+relabelTo :: Vector Int -> WorkT -> WorkT
+relabelTo targetL2P y =
+  y { log2phys = targetL2P
+    , phys2log = invertVec targetL2P
+    }
 
 scaleMPS :: ComplexT -> MPS -> MPS
 scaleMPS c m = m { scalar = c * scalar m }
@@ -141,6 +165,7 @@ markDirtyIval i m = m { dirty = Just $ maybe i (hull i) (dirty m) }
 clearDirty :: MPS -> MPS
 clearDirty m = m { dirty = Nothing }
 
+(.*.) :: CMat -> CMat -> CMat
 (.*.) = (H.<>) -- HMatrix <> conflicts with Prelude.<>
 
 innerMPS :: HasCallStack => WorkT -> WorkT -> ComplexT
@@ -175,11 +200,25 @@ instance HilbertSpace WorkT where
     in 
       if nrm < tol (cfg ψ) then ψ else ((1/nrm):+0) .* ψ
   
-data Trunc = Exact | Truncate { maxBond :: !Int, eps2 :: !Double } deriving (Show,Eq)
-data EvalCfg = EvalCfg { trunc :: !Trunc, tol :: !Double } deriving (Show,Eq)
+data Trunc = Exact | Truncate { maxBond :: !Int, svd_r :: !Double, profile :: Maybe ProfileCfg } 
+        deriving (Show,Eq)
+
+data EvalCfg    = EvalCfg { trunc :: !Trunc, tol :: !Double } deriving (Show,Eq)
+data ProfileCfg = ProfileCfg {
+  nSVDs      :: !Int,
+  maxBondDim :: !Int,
+  errorBound :: !Double
+} deriving (Show,Eq)
 
 defaultCfg :: EvalCfg
 defaultCfg = EvalCfg { trunc = Exact, tol = 1e-12 }
+
+approxCfg :: Bool -> Int -> Double -> EvalCfg
+approxCfg doProfile maxbond svd_r = EvalCfg
+  { trunc = Truncate { maxBond = maxbond, svd_r = svd_r,
+                       profile = if doProfile then Just (ProfileCfg 0 0 0) else Nothing }
+  , tol = 1e-12
+  }
 
 -- structural dagger -- move to Syntax?
 dagger :: QOp -> QOp
@@ -234,69 +273,109 @@ vcat = (H.===)
 theta2 :: Site -> Site -> CMat
 theta2 a b = vcat (a0 a)  (a1 a) .*. hcat (a0 b) (a1 b)
 
-chooseChi :: EvalCfg -> H.Vector Double -> Int
-chooseChi cfg s =
-  let ss    = H.toList s
-      ssNZ  = takeWhile (> tol cfg) ss
-      rNZ   = max 1 (length ssNZ)
-      sq x  = x*x
-  in case trunc cfg of
-       Exact -> rNZ
-       Truncate{maxBond, eps2} ->
-         let cap = max 1 (min maxBond rNZ)
-             tot = sum (map sq (take rNZ ss))
-             ok chi = let kept = take chi ssNZ
-                          tailE = tot - sum (map sq kept)
-                      in tailE <= eps2 * tot
-         in head ([chi | chi <- [1..cap], ok chi] ++ [cap])
-
-
 diagMulLeft :: H.Vector Double -> CMat -> CMat
 diagMulLeft v m = (H.complex . H.asColumn $ v) * m
 
 diagMulRight :: CMat -> H.Vector Double -> CMat
 diagMulRight m v = m * (H.complex . H.asRow $ v)
 
-svd_chi :: EvalCfg -> CMat -> (CMat, H.Vector Double, CMat, Int)
-svd_chi cfg m = case trunc cfg of
+svd_compact :: EvalCfg -> CMat -> (CMat, H.Vector Double, CMat, Double)
+svd_compact cfg m = case trunc cfg of
   Exact -> let 
               (u,s,v) = compactSVD m
-              chi = size s
-            in (u, s, v, chi)
-  Truncate{maxBond, eps2} -> let (u,s,v) = compactSVDTol eps2 m -- TODO: Check def 
-                                 chi     = min maxBond (size s)
-                                 u'      = H.takeColumns chi u
-                                 v'      = H.takeColumns chi v
-                            in (u', s, v', chi)
+            in (u, s, v, 0)
+  
+  Truncate{maxBond,svd_r, profile} -> 
+    let 
+      (u,s,v) = svd profile m
+      [u',v'] = H.takeColumns chi <$> [u,v] -- Truncate internal bond dimension to χ
+      error_bound = case profile of 
+        Just _  -> H.sumElements (H.subVector chi (size s - chi) (s*s))
+        Nothing -> 0
+
+-- If we track errors, we need to calculate all nonzero singular values        
+      svd (Just _) = compactSVD ; svd Nothing = compactSVDTol svd_r
+      svd_tol      = svd_r*g*epsilon*k where g = H.norm_Inf s
+                                             k = fromIntegral (max (rows m) (cols m))
+      chi          = min maxBond (firstBelow svd_tol s)
+    in (u', s, v', error_bound)
+    
+     
+
+updateProfile :: EvalCfg -> Int -- χ (new bond dim)
+                -> Double         -- error ( ∑ σ_i^2 for discarded singular values σ)
+                -> EvalCfg
+updateProfile cfg chi error_bound = case trunc cfg of
+  Truncate{profile=Just p}  ->
+    let p' = p { nSVDs      = (nSVDs p) + 1,
+                 maxBondDim = max (maxBondDim p) chi,
+                 errorBound = errorBound p + error_bound
+               }
+    in cfg { trunc = (trunc cfg) { profile = Just p' } }
+  _ -> cfg
 
 moveRight :: Int -> WorkT -> WorkT
 moveRight j m
   | j < 0 || j+1 >= nSites m = error "moveRight"
   | otherwise =
       let 
-          (a, b)       = (sites m ! j, sites m ! (j+1))
-          (dl, dr)     = (rows (a0 a), cols (a0 b)) -- External bond dimensions
-          (u,s,v,chi)  = svd_chi (cfg m) (theta2 a b) -- compactSVD (exact or tol truncated) or thinSVD (maxbond truncated). χ is the new internal bond dimension
---          (u',v')  = H.takeColumns chi <$> (u,v)
-          a'  = Site (takeRows dl u) (dropRows dl u) -- Left Isometry A'
-          -- Absorb singular values into B'. Θ = U S V† = A' B'  =>  B' = S V† 
-          sv  = diagMulLeft s (tr v)
-          b'  = Site (takeColumns dr sv) (dropColumns dr sv)
-      in m { sites = sites m V.// [(j,a'),(j+1,b')], center_site = j+1 }
+          (a, b)        = (sites m ! j, sites m ! (j+1))
+          (dl, dr)      = (rows (a0 a), cols (a0 b)) -- External bond dimensions
+          (u,s,v,δ) = svd_compact (cfg m) (theta2 a b) -- compactSVD (exact or tol truncated) 
+          
+          -- Update profiling statistics + track the error bound
+          cfg' = updateProfile (cfg m) (size s) δ
 
+          -- Absorb singular values into B'. Θ = U S V† = A' B'  =>  B' = S V†           
+          sv   = diagMulLeft s (tr v)          
+          a'   = uncurry Site (split2x1 dl u) -- Left Isometry A'
+          b'   = uncurry Site (split1x2 dr sv)
+          
+      in m { sites = sites m V.// [(j,a'),(j+1,b')], center_site = j+1, cfg = cfg' }
+-- factor to moveCenter 
 moveLeft :: Int -> WorkT -> WorkT
 moveLeft j m
   | j <= 0 || j >= nSites m = error "moveLeft"
   | otherwise =
       let i = j-1
-          (a,b)       = (sites m ! i, sites m ! j)
-          (dl, dr)    = (rows (a0 a), cols (a0 b))
-          (u,s,v,chi) = svd_chi (cfg m) (theta2 a b)
+          (a,b)     = (sites m ! i, sites m ! j)
+          (dl, dr)  = (rows (a0 a), cols (a0 b))
+          (u,s,v,δ) = svd_compact (cfg m) (theta2 a b)
+
+          -- Update profiling statistics + track the error bound
+          cfg' = updateProfile (cfg m) (size s) δ
+          
           -- Absorb singular values into A'. Θ = U S V† = A' B'  =>  A' = U S
           us  = diagMulRight u s
-          a'  = Site (takeRows dl us) (dropRows dl us)
-          b'  = Site (takeColumns dr (tr v)) (dropColumns dr (tr v))
-      in m { sites = sites m V.// [(i,a'),(j,b')], center_site = j-1 }
+          a'  = uncurry Site (split2x1 dl us)
+          b'  = uncurry Site (split1x2 dr (tr v))
+      in m { sites = sites m V.// [(i,a'),(j,b')], center_site = j-1, cfg = cfg' }
+
+
+swapSites :: Int -> WorkT -> WorkT
+swapSites j psi = let 
+    n = nSites psi
+  in
+    if j < 0 || j+1 >= n then error "swapSites"
+    else 
+      let (a,  b)  = (sites psi ! j, sites psi ! (j+1))
+          (dl, dr) = (rows (a0 a), cols (a0 b))
+
+          (a0b0,a0b1,
+           a1b0,a1b1) = split2x2 dl dr $ theta2 a b
+          
+          theta' = H.fromBlocks [[a0b0,a1b0],
+                                 [a0b1,a1b1]] -- Swap off-diagonal blocks
+          
+          (u,s,v,δ) = svd_compact (cfg psi) theta'
+
+          a' = uncurry Site (split2x1 dl u)
+          sv = diagMulLeft s (tr v)
+          b' = uncurry Site (split1x2 dr sv)
+
+          cfg' = updateProfile (cfg psi) (size s) δ          
+      in psi { sites = sites psi V.// [(j,a'),(j+1,b')], cfg = cfg' }
+
 
 moveCenterToPhys :: Int -> WorkT -> WorkT
 moveCenterToPhys p0 = go where
@@ -413,29 +492,46 @@ mulVecMat v m = H.flatten (H.asRow v .*. m)
 -- beam-search sparse extraction (fast for low-entanglement states)
 toSparseMat :: (HasWork t) => Double -> Int -> t -> SparseMat
 toSparseMat eps maxTerms t0 =
-  let mps = compressIfDirty (toWork t0)
-      n   = fromIntegral . nSites $ mps
-      dim = 2^n :: Integer
-      -- states are (index, row-vector on current bond)
+  let mps  = compressIfDirty (toWork t0)
+      n    = nSites mps 
+      dim  = 2^(fromIntegral n :: Integer)
+      eps2 = eps * eps
+
+      step :: [(Integer, CVec)] -> Int -> [(Integer, CVec)]
       step states p =
-        let Site x0 x1 = sites mps ! p
-            q = phys2log mps ! p
-            bitpos = n-1-q
-            extend (idx,v) =
-              [ let m = if s==0 then x0 else x1
-                    v' = mulVecMat v m
-                    w2 = H.sumElements (H.cmap (\z -> let a=realPart z; b=imagPart z in a*a+b*b) v')
-                    idx' = if s==0 then idx else (idx .|. (1 `shiftL` bitpos))
-                in (idx', v', w2)
-              | s <- [0,1] :: [Int]
-              ]
-            cand = concatMap extend states
-            cand' = [ (i,v,w2) | (i,v,w2) <- cand, sqrt w2 > eps ]
-            best = take maxTerms $ sortOn (\(_,_,w2) -> negate w2) cand'
-        in [ (i,v) | (i,v,_) <- best ]
-      finals = foldl' step [(0, H.fromList [scalar mps])] [0..n-1]
-      nz = [ ((i,0), v `H.atIndex` 0) | (i,v) <- finals, H.size v == 1, magnitude (v `H.atIndex` 0) > eps ]
-  in trace ("nSites = "++show n++", dim = "++show dim) SparseMat ((dim,1), nz)
+        let Site a0 a1 = sites mps ! p
+            q          = phys2log mps ! p
+            bitpos     = (n - 1) - q
+            branches   = [(0, a0), (1, a1)] :: [(Integer,CMat)]
+
+            extend1
+              :: (Integer, CMat)
+              -> (Integer, CVec)
+              -> PriorityQ.MinPQueue Double (Integer, CVec)
+              -> PriorityQ.MinPQueue Double (Integer, CVec)
+            extend1 (s,a) (!idx,!v) beam0 =
+              let !v' = v <# a
+                  !w2 = realPart $ dot v' v'
+              in  if w2 <= eps2 
+                    then beam0 -- Continuing on this path cannot yield amplitude larger than eps2 
+                    else let !idx' = idx .|. (s `shiftL` bitpos)   -- Feasible candidate:
+                         in  pushTopK maxTerms w2 (idx', v') beam0 -- push to top-k priority queue
+
+            extendState
+              :: PriorityQ.MinPQueue Double (Integer, CVec)
+              -> (Integer, CVec)
+              -> PriorityQ.MinPQueue Double (Integer, CVec)
+            extendState beam0 st = foldl' (\b br -> extend1 br st b) beam0 branches
+
+            beam = foldl' extendState PriorityQ.empty states
+        in  map snd (PriorityQ.toDescList beam)
+
+      finals = -- Branch and bound on path through sites from left to right
+        foldl' step [(0 :: Integer, H.fromList [scalar mps])] [0 .. n-1]
+      
+      nz = [ ((i,0), v `atIndex` 0) | (i,v) <- finals ]
+  in SparseMat ((dim,1), nz)
+
 
 instance Convertible WorkT SparseMat where
   to   mps = toSparseMat (tol $ cfg mps) 100 mps
@@ -588,7 +684,7 @@ evalOpAtW base op st = case op of
         b1    = evalOpAtW (base+1) b (projectCtrl ctrlP True  st)
     in addLocal iHull b0 b1
 
--- Steps / programs
+-- Steps / programs -- MOVE TO COMMON MODULE.
 evalStep :: HasCallStack => (StateT, Outcomes, RNG) -> Step -> (StateT, Outcomes, RNG)
 evalStep (st, outs, rng) step = -- trace("step "++showStep step ++ " on " ++ showState st) $ 
   case step of
@@ -608,8 +704,12 @@ evalStep (st, outs, rng) step = -- trace("step "++showStep step ++ " on " ++ sho
 evalProg :: Program -> StateT -> RNG -> (StateT, Outcomes, RNG)
 evalProg prog st rng = foldl' evalStep (st, [], rng) prog
 
+-- Helper functions for MPS
+bondDimensions :: MPS -> V.Vector Int
+bondDimensions mps = bondDim <$> (sites mps)
+  where
+    bondDim (Site a0 _) = rows a0
+  
+
 maxBondDimension :: MPS -> Int
-maxBondDimension mps =
-  let ds = V.toList $ sites mps
-      bondDims s = [ rows (a0 s), cols (a0 s) ]
-  in maximum $ concatMap bondDims ds
+maxBondDimension mps = maximum . V.toList . bondDimensions $ mps

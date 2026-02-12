@@ -3,6 +3,9 @@ import HQP.QOp.Syntax hiding (I)
 import Data.Bits(FiniteBits,finiteBitSize,countLeadingZeros,countTrailingZeros,shiftL,shiftR)
 import Data.List (sort)
 import Math.NumberTheory.Logarithms (integerLog2')
+import Numeric.LinearAlgebra hiding (scale, (<>), trace)
+import qualified Data.PQueue.Prio.Min as PriorityQ
+import qualified Data.Vector.Generic as G
 import qualified Data.Set as S
 
 
@@ -98,3 +101,62 @@ permSupport ks = [ i | (i,j) <- zip [0..] ks, i /= j ]
 invertPerm :: [Int] -> [Int] -- TODO: invertPerm -> permInvert for consistency
 invertPerm ks = map snd $  -- For each index in the output, find its position in the input
     sort [ (k, i) | (i, k) <- zip [0..] ks ]
+
+
+-- HMatrix helper functions
+split2x2 :: Element e
+         => Nat      -- nr row split
+         -> Nat      -- nc column split
+         -> Matrix e -- m  input matrix
+         -> (Matrix e, Matrix e, Matrix e, Matrix e)
+split2x2 nr nc m = let
+    (r,c) = (rows m, cols m)
+  in
+    ( subMatrix (0,0)   (nr,  nc)   m,
+      subMatrix (0,nc)  (nr,  c-nc) m,
+      subMatrix (nr,0)  (r-nr,nc)   m,
+      subMatrix (nr,nc) (r-nr,c-nc) m  )
+
+split2x1 :: Element e 
+         => Nat      -- nr row split
+         -> Matrix e -- m  input matrix
+         -> (Matrix e, Matrix e)
+split2x1 nr m = let
+    (r,c) = (rows m, cols m)
+  in
+    ( subMatrix (0,0)   (nr,  c) m,
+      subMatrix (nr,0)  (r-nr,c) m  )
+
+split1x2 ::Element e 
+         =>  Nat      -- nc column split
+         -> Matrix e -- m  input matrix
+         -> (Matrix e, Matrix e)
+split1x2 nc m = let
+    (r,c) = (rows m, cols m)
+  in
+    ( subMatrix (0,0)   (r,  nc)   m,
+      subMatrix (0,nc)  (r,  c-nc) m  )   
+
+  -- s descending. Return first i with s!i < eps2, or n if none.
+firstBelow :: (G.Vector v a, Ord a) => a -> v a -> Int
+firstBelow cutoff s = go 0 (G.length s)
+  where
+    go !lo !hi
+      | lo >= hi           = lo
+      | s G.! mid < cutoff = go lo mid
+      | otherwise          = go (mid+1) hi
+      where
+        !mid = (lo+hi) `div` 2   
+
+
+-- HELPER DATA STRUCTURES
+pushTopK :: Int 
+         -> Double 
+         -> a -> PriorityQ.MinPQueue Double a 
+         -> PriorityQ.MinPQueue Double a
+pushTopK !k !key !val !q
+  | k <= 0        = PriorityQ.empty
+  | PriorityQ.size q < k = PriorityQ.insert key val q
+  | otherwise     =
+      let (!kmin, _) = PriorityQ.findMin q
+      in  if key <= kmin then q else PriorityQ.insert key val (PriorityQ.deleteMin q)
