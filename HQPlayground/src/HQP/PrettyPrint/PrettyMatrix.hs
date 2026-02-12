@@ -41,6 +41,7 @@ showR x =
 
 showSparse :: SparseMat -> String
 -- showSparse = show
+showSparse (SparseMat ((_,_), [])) = "0" 
 showSparse ( SparseMat ((m,n), nonzeros) ) = 
     let
           (logm,logn) = (integerlog2 m, integerlog2 n)
